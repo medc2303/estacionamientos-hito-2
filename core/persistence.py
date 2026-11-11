@@ -116,27 +116,24 @@ class GoogleSheetsBotManager:
                 return
             if "gcp_service_account" in st.secrets:
                 self._creds_dict = dict(st.secrets["gcp_service_account"])
-                self.sheet_url = str(st.secrets.get("spreadsheet_url", "")).strip()
+                self.sheet_url = str(st.secrets.get("spreadsheet_url", "AUTO")).strip() or "AUTO"
                 self.bot_email = self._creds_dict.get("client_email", "")
-                if self._creds_dict and self.sheet_url:
+                if self._creds_dict:
                     self.modo = "service_account"
                     self.conectado = True
                     self.ultimo_estado = f"Bot Google Cloud activo ({self.bot_email})"
         except Exception:
             pass
 
-    def configurar_bot(self, creds_json_str: str, sheet_url: str) -> Tuple[bool, str]:
+    def configurar_bot(self, creds_json_str: str, sheet_url: str = "AUTO") -> Tuple[bool, str]:
         """Guarda y valida las credenciales JSON del Bot de Google Cloud y el URL del Google Sheet."""
         try:
             creds_data = json.loads(creds_json_str)
             if "client_email" not in creds_data or "private_key" not in creds_data:
                 return False, "El archivo JSON no contiene 'client_email' ni 'private_key' de una Cuenta de Servicio."
 
-            if not sheet_url.strip():
-                return False, "Debes ingresar el enlace (URL) o ID de tu hoja de Google Sheets."
-
             self._creds_dict = creds_data
-            self.sheet_url = sheet_url.strip()
+            self.sheet_url = sheet_url.strip() if sheet_url.strip() else "AUTO"
             self.bot_email = creds_data["client_email"]
             self.modo = "service_account"
 
@@ -198,7 +195,7 @@ class GoogleSheetsBotManager:
                 pass
 
     def _abrir_spreadsheet(self):
-        if not self.conectado or not self._creds_dict or not self.sheet_url:
+        if not self.conectado or not self._creds_dict:
             return None
         import gspread
         from google.oauth2.service_account import Credentials
@@ -209,9 +206,21 @@ class GoogleSheetsBotManager:
         ]
         creds = Credentials.from_service_account_info(self._creds_dict, scopes=scopes)
         client = gspread.authorize(creds)
-        if self.sheet_url.startswith("http"):
-            return client.open_by_url(self.sheet_url)
-        return client.open_by_key(self.sheet_url)
+        if self.sheet_url and self.sheet_url != "AUTO":
+            if self.sheet_url.startswith("http"):
+                return client.open_by_url(self.sheet_url)
+            return client.open_by_key(self.sheet_url)
+
+        # Modo AUTO: busca automáticamente la primera hoja compartida con el bot
+        hojas = client.openall()
+        if hojas:
+            sh = hojas[0]
+            self.sheet_url = sh.url
+            return sh
+        # Si no hay ninguna compartida aún, intenta crear una en el Drive del bot
+        sh = client.create("SIGE_Estacionamientos_Hito2")
+        self.sheet_url = sh.url
+        return sh
 
     def sincronizar_csv_a_sheets(self, nombres_archivos: List[str]) -> Tuple[bool, str]:
         """Sube el contenido actual de los archivos CSV locales a pestañas del Google Sheet."""
