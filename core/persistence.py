@@ -1,65 +1,127 @@
 """
-Gestor de Persistencia Híbrida (CSV Local + Bot de Google Cloud / Google Sheets API).
+Gestor de Persistencia Híbrida (CSV Local + Bot de Google Cloud / Google Sheets API / Apps Script).
 Cumple con:
 - RT03 (Persistencia): Conserva estados y recupera datos tras cerrar y volver a ejecutar.
 - RT04 (Datos para el Dashboard Entrega 3): Mantiene archivos CSV estructurados en data/.
-- Hosting en GitHub + Streamlit Cloud: Integra un Bot de Cuenta de Servicio de Google Cloud
-  (gspread + google-auth) que respalda y restaura automáticamente las tablas CSV en un
-  Google Sheet compartido con el correo del bot.
+- Hosting en GitHub + Streamlit Cloud:
+  Soporta dos modalidades de Bot de Google para sincronizar los CSV con Google Sheets:
+  1) Bot Cuenta de Servicio de Google Cloud (Service Account JSON + gspread).
+  2) Bot Webhook de Google Apps Script (URL de Web App directo desde Google Sheets, sin consola GCP).
 """
 
 from __future__ import annotations
 import csv
 import json
 import os
+import urllib.request
 from typing import Dict, List, Optional, Tuple, Any
 from core.models import Estacionamiento, Reserva, EventoHistorial
 from core.seed_data import generar_semilla_inicial
 
 
+CODIGO_APPS_SCRIPT_BOT = """// ============================================================================
+// BOT DE GOOGLE SHEETS PARA SIGE (HITO 2 - STREAMLIT)
+// 1. En tu Google Sheet ve a: Extensiones -> Apps Script
+// 2. Borra todo, pega este código y presiona Guardar (icono de disquete).
+// 3. Haz clic en "Implementar" -> "Nueva implementación"
+// 4. En tipo elige "Aplicación web", Acceso: "Cualquier persona" -> Implementar.
+// 5. Copia la URL de la Aplicación Web y pégala en Streamlit.
+// ============================================================================
+
+function doPost(e) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var payload = JSON.parse(e.postData.contents);
+  var action = payload.action || "sync_up";
+
+  if (action === "sync_up") {
+    var tables = payload.tables || {};
+    for (var sheetName in tables) {
+      var rows = tables[sheetName];
+      var ws = ss.getSheetByName(sheetName);
+      if (!ws) { ws = ss.insertSheet(sheetName); }
+      ws.clearContents();
+      if (rows && rows.length > 0) {
+        ws.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
+      }
+    }
+    return ContentService.createTextOutput(JSON.stringify({ok: true, msg: "Sincronizado en Google Sheets"}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (action === "sync_down") {
+    var result = {};
+    var sheets = ss.getSheets();
+    for (var i = 0; i < sheets.length; i++) {
+      var s = sheets[i];
+      result[s.getName()] = s.getDataRange().getValues();
+    }
+    return ContentService.createTextOutput(JSON.stringify({ok: true, tables: result}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+"""
+
+
 class GoogleSheetsBotManager:
     """
     Administra la sincronización bidireccional entre los archivos CSV locales
-    y una Hoja de Cálculo de Google (Google Sheets) mediante un Bot Service Account.
+    y una Hoja de Cálculo de Google (Google Sheets) mediante:
+    - Cuenta de Servicio de Google Cloud (Service Account JSON), o
+    - Webhook de Google Apps Script.
     """
 
     def __init__(self, data_dir: str) -> None:
         self.data_dir = data_dir
         self.config_bot_path = os.path.join(data_dir, "google_bot_config.json")
         self.ultimo_estado: str = "Modo CSV Local Activo"
+        self.modo: str = "ninguno"  # "service_account" | "apps_script" | "ninguno"
         self.bot_email: str = ""
         self.sheet_url: str = ""
+        self.apps_script_url: str = ""
         self.conectado: bool = False
         self._creds_dict: Optional[Dict[str, Any]] = None
         self._cargar_configuracion_guardada()
 
     def _cargar_configuracion_guardada(self) -> None:
-        """Intenta cargar credenciales desde st.secrets o desde archivo de configuración local."""
-        # 1. Intentar desde archivo local si el usuario lo configuró en la interfaz
+        """Intenta cargar credenciales desde archivo local o desde st.secrets en Streamlit Cloud."""
         if os.path.exists(self.config_bot_path):
             try:
                 with open(self.config_bot_path, "r", encoding="utf-8") as f:
                     saved = json.load(f)
+                modo = saved.get("modo", "service_account")
+                if modo == "apps_script" and saved.get("apps_script_url"):
+                    self.modo = "apps_script"
+                    self.apps_script_url = saved["apps_script_url"]
+                    self.conectado = True
+                    self.ultimo_estado = "Bot Apps Script vinculado a Google Sheets"
+                    return
                 self._creds_dict = saved.get("service_account")
                 self.sheet_url = saved.get("sheet_url", "")
                 if self._creds_dict and self.sheet_url:
+                    self.modo = "service_account"
                     self.bot_email = self._creds_dict.get("client_email", "")
                     self.conectado = True
-                    self.ultimo_estado = f"Bot Google vinculado ({self.bot_email})"
+                    self.ultimo_estado = f"Bot Google Cloud activo ({self.bot_email})"
                     return
             except Exception:
                 pass
 
-        # 2. Intentar desde st.secrets (cuando corre en Streamlit Community Cloud)
         try:
             import streamlit as st
+            if "apps_script_url" in st.secrets and str(st.secrets["apps_script_url"]).startswith("http"):
+                self.modo = "apps_script"
+                self.apps_script_url = str(st.secrets["apps_script_url"]).strip()
+                self.conectado = True
+                self.ultimo_estado = "Bot Google Apps Script activo (st.secrets)"
+                return
             if "gcp_service_account" in st.secrets:
                 self._creds_dict = dict(st.secrets["gcp_service_account"])
-                self.sheet_url = st.secrets.get("spreadsheet_url", "")
+                self.sheet_url = str(st.secrets.get("spreadsheet_url", "")).strip()
                 self.bot_email = self._creds_dict.get("client_email", "")
                 if self._creds_dict and self.sheet_url:
+                    self.modo = "service_account"
                     self.conectado = True
-                    self.ultimo_estado = f"Bot Google Cloud activo desde st.secrets ({self.bot_email})"
+                    self.ultimo_estado = f"Bot Google Cloud activo ({self.bot_email})"
         except Exception:
             pass
 
@@ -68,15 +130,23 @@ class GoogleSheetsBotManager:
         try:
             creds_data = json.loads(creds_json_str)
             if "client_email" not in creds_data or "private_key" not in creds_data:
-                return False, "El JSON no corresponde a una Cuenta de Servicio de Google Cloud válida."
+                return False, "El archivo JSON no contiene 'client_email' ni 'private_key' de una Cuenta de Servicio."
+
+            if not sheet_url.strip():
+                return False, "Debes ingresar el enlace (URL) o ID de tu hoja de Google Sheets."
 
             self._creds_dict = creds_data
             self.sheet_url = sheet_url.strip()
             self.bot_email = creds_data["client_email"]
+            self.modo = "service_account"
 
             with open(self.config_bot_path, "w", encoding="utf-8") as f:
                 json.dump(
-                    {"service_account": creds_data, "sheet_url": self.sheet_url},
+                    {
+                        "modo": "service_account",
+                        "service_account": creds_data,
+                        "sheet_url": self.sheet_url,
+                    },
                     f,
                     indent=2,
                     ensure_ascii=False,
@@ -84,14 +154,41 @@ class GoogleSheetsBotManager:
 
             self.conectado = True
             self.ultimo_estado = f"Bot configurado: {self.bot_email}"
-            return True, f"Bot de Google ({self.bot_email}) vinculado correctamente."
+            return True, f"✅ Bot de Google Cloud ({self.bot_email}) vinculado correctamente."
         except Exception as e:
             return False, f"Error al leer credenciales JSON del Bot: {e}"
 
+    def configurar_bot_apps_script(self, web_app_url: str) -> Tuple[bool, str]:
+        """Vincula el Bot mediante la URL de Aplicación Web de Google Apps Script."""
+        url_limpia = web_app_url.strip()
+        if not url_limpia.startswith("https://script.google.com/"):
+            return False, "La URL debe comenzar con 'https://script.google.com/macros/s/...'."
+        self.modo = "apps_script"
+        self.apps_script_url = url_limpia
+        self.conectado = True
+        self.ultimo_estado = "Bot Google Apps Script activo"
+        with open(self.config_bot_path, "w", encoding="utf-8") as f:
+            json.dump({"modo": "apps_script", "apps_script_url": url_limpia}, f, indent=2)
+        return True, "✅ Bot de Google Apps Script vinculado correctamente."
+
+    def generar_toml_secrets(self) -> str:
+        """Genera el bloque TOML listo para copiar y pegar en Settings -> Secrets de Streamlit Cloud."""
+        if self.modo == "apps_script" and self.apps_script_url:
+            return f'apps_script_url = "{self.apps_script_url}"\n'
+        if not self._creds_dict:
+            return ""
+        lineas = [f'spreadsheet_url = "{self.sheet_url}"', "", "[gcp_service_account]"]
+        for k, v in self._creds_dict.items():
+            val_escaped = str(v).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+            lineas.append(f'{k} = "{val_escaped}"')
+        return "\n".join(lineas)
+
     def desconectar_bot(self) -> None:
         self.conectado = False
+        self.modo = "ninguno"
         self._creds_dict = None
         self.sheet_url = ""
+        self.apps_script_url = ""
         self.bot_email = ""
         self.ultimo_estado = "Modo CSV Local Activo"
         if os.path.exists(self.config_bot_path):
@@ -101,7 +198,6 @@ class GoogleSheetsBotManager:
                 pass
 
     def _abrir_spreadsheet(self):
-        """Abre la conexión con Google Sheets usando gspread y google-auth."""
         if not self.conectado or not self._creds_dict or not self.sheet_url:
             return None
         import gspread
@@ -121,6 +217,29 @@ class GoogleSheetsBotManager:
         """Sube el contenido actual de los archivos CSV locales a pestañas del Google Sheet."""
         if not self.conectado:
             return False, "El Bot de Google no está vinculado; los datos se guardaron en los CSV locales."
+
+        if self.modo == "apps_script" and self.apps_script_url:
+            try:
+                tablas: Dict[str, List[List[str]]] = {}
+                for nombre_csv in nombres_archivos:
+                    ruta_csv = os.path.join(self.data_dir, nombre_csv)
+                    if os.path.exists(ruta_csv):
+                        with open(ruta_csv, mode="r", encoding="utf-8") as f:
+                            tablas[nombre_csv.replace(".csv", "")] = list(csv.reader(f))
+                payload = json.dumps({"action": "sync_up", "tables": tablas}).encode("utf-8")
+                req = urllib.request.Request(
+                    self.apps_script_url,
+                    data=payload,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    _ = resp.read()
+                self.ultimo_estado = "CSV sincronizados con Google Sheets (Apps Script)"
+                return True, "✅ Todos los archivos CSV fueron respaldados en Google Sheets vía Apps Script."
+            except Exception as e:
+                return False, f"Guardado local OK. Aviso Apps Script: {e}"
+
         try:
             sh = self._abrir_spreadsheet()
             if sh is None:
@@ -149,7 +268,7 @@ class GoogleSheetsBotManager:
                 ws.update(filas)
 
             self.ultimo_estado = "CSV sincronizados con Google Sheets exitosamente"
-            return True, "Todos los archivos CSV fueron respaldados en Google Sheets por el Bot."
+            return True, "✅ Todos los archivos CSV fueron respaldados en Google Sheets por el Bot."
         except Exception as e:
             self.ultimo_estado = f"Respaldo local CSV OK (Aviso Bot: {e})"
             return False, f"Guardado en CSV local exitoso. Aviso al sincronizar Google Sheets: {e}"
@@ -158,6 +277,35 @@ class GoogleSheetsBotManager:
         """Descarga las pestañas del Google Sheet hacia los archivos CSV locales."""
         if not self.conectado:
             return False, "El Bot de Google no está configurado."
+
+        if self.modo == "apps_script" and self.apps_script_url:
+            try:
+                payload = json.dumps({"action": "sync_down"}).encode("utf-8")
+                req = urllib.request.Request(
+                    self.apps_script_url,
+                    data=payload,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                tablas = data.get("tables", {})
+                restaurados = 0
+                for nombre_csv in nombres_archivos:
+                    titulo = nombre_csv.replace(".csv", "")
+                    filas = tablas.get(titulo, [])
+                    if len(filas) > 1:
+                        ruta_csv = os.path.join(self.data_dir, nombre_csv)
+                        with open(ruta_csv, mode="w", newline="", encoding="utf-8") as f:
+                            writer = csv.writer(f)
+                            writer.writerows(filas)
+                        restaurados += 1
+                if restaurados > 0:
+                    return True, f"✅ Se restauraron {restaurados} tablas CSV desde Google Sheets."
+                return False, "El Google Sheet aún no tiene datos respaldados."
+            except Exception as e:
+                return False, f"Error al restaurar desde Apps Script: {e}"
+
         try:
             sh = self._abrir_spreadsheet()
             if sh is None:
@@ -177,7 +325,7 @@ class GoogleSheetsBotManager:
                         restaurados += 1
             if restaurados > 0:
                 self.ultimo_estado = f"{restaurados} tablas CSV restauradas desde Google Sheets"
-                return True, f"Se restauraron {restaurados} archivos CSV desde Google Sheets."
+                return True, f"✅ Se restauraron {restaurados} archivos CSV desde Google Sheets."
             return False, "El Google Sheet aún no contiene tablas válidas para restaurar."
         except Exception as e:
             return False, f"Error al descargar desde Google Sheets: {e}"
@@ -190,7 +338,7 @@ class GestorPersistenciaCSV:
     - reservas.csv
     - historial_eventos.csv
     - config_sistema.csv
-    Y coordina la sincronización opcional con el Bot de Google Cloud.
+    Y coordina la sincronización opcional con el Bot de Google.
     """
 
     ARCHIVOS_OPERACIONALES = [
@@ -210,11 +358,6 @@ class GestorPersistenciaCSV:
         self.bot_google = GoogleSheetsBotManager(self.data_dir)
 
     def inicializar_si_no_existe(self, forzar_reinicio: bool = False) -> None:
-        """
-        Si no existen los CSV operacionales (o si se solicita reiniciar a los datos semilla del Hito 1),
-        intenta primero restaurar desde el Bot de Google Sheets (si no es reinicio forzado) y,
-        en su defecto, genera los CSV semilla a partir de dataset_historico_hito1.csv.
-        """
         existen_locales = (
             os.path.exists(self.est_csv)
             and os.path.exists(self.res_csv)
@@ -240,8 +383,6 @@ class GestorPersistenciaCSV:
         config: Dict[str, str],
         sincronizar_nube: bool = True,
     ) -> None:
-        """Escribe todas las entidades en sus respectivos archivos CSV y sincroniza con el Bot si está activo."""
-        # 1. Guardar estacionamientos.csv
         if estacionamientos:
             campos_est = list(estacionamientos[0].to_dict().keys())
             with open(self.est_csv, mode="w", newline="", encoding="utf-8") as f:
@@ -250,7 +391,6 @@ class GestorPersistenciaCSV:
                 for e in estacionamientos:
                     writer.writerow(e.to_dict())
 
-        # 2. Guardar reservas.csv
         campos_res = [
             "id_reserva", "id_estacionamiento", "propietario", "cliente", "patente",
             "fecha", "hora_inicio", "hora_fin", "duracion_reservada_min",
@@ -265,7 +405,6 @@ class GestorPersistenciaCSV:
             for r in reservas:
                 writer.writerow(r.to_dict())
 
-        # 3. Guardar historial_eventos.csv
         campos_evt = [
             "id_evento", "fecha_hora_registro", "tipo_evento", "rol_actor",
             "id_estacionamiento", "id_reserva", "propietario", "cliente",
@@ -278,21 +417,18 @@ class GestorPersistenciaCSV:
             for ev in eventos:
                 writer.writerow(ev.to_dict())
 
-        # 4. Guardar config_sistema.csv
         with open(self.cfg_csv, mode="w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(["clave", "valor"])
             for k, v in config.items():
                 writer.writerow([k, str(v)])
 
-        # 5. Si el Bot de Google Cloud está conectado, respaldar en Google Sheets
         if sincronizar_nube and self.bot_google.conectado:
             self.bot_google.sincronizar_csv_a_sheets(self.ARCHIVOS_OPERACIONALES)
 
     def cargar_todo(
         self,
     ) -> Tuple[List[Estacionamiento], List[Reserva], List[EventoHistorial], Dict[str, str]]:
-        """Recupera el estado completo del sistema desde los archivos CSV."""
         self.inicializar_si_no_existe(forzar_reinicio=False)
 
         estacionamientos: List[Estacionamiento] = []

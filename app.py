@@ -16,6 +16,7 @@ from core.engine import (
     TABLA_5_1_UMBRALES,
     hora_a_minutos,
 )
+from core.persistence import CODIGO_APPS_SCRIPT_BOT
 
 # Configuración de página
 st.set_page_config(
@@ -747,16 +748,21 @@ elif vista.startswith("📊"):
             )
 
     with tab_bot:
-        st.markdown("#### 🤖 **Gestor de Persistencia en la Nube con Bot de Google Cloud (`Service Account`)**")
+        st.markdown("#### 🤖 **Gestor de Persistencia en la Nube con Bot de Google (Google Sheets)**")
         st.write(
             "Para que al hostear la aplicación en **GitHub + Streamlit Community Cloud** los archivos CSV no se pierdan "
-            "cuando el contenedor se reinicie, este módulo conecta un **Bot de Cuenta de Servicio de Google (`gspread`)** "
-            "que respalda y restaura automáticamente los CSV en una Hoja de Cálculo de Google (**Google Sheets**)."
+            "cuando el servidor se reinicie, puedes conectar tu hoja de **Google Sheets** usando cualquiera de estas **2 opciones** "
+            "(ambas gratuitas):"
         )
 
         bot = motor.persistencia.bot_google
         if bot.conectado:
-            st.success(f"✅ **Bot Conectado:** `{bot.bot_email}` | **Hoja vinculada:** `{bot.sheet_url}`")
+            detalle_conn = (
+                f"Modo Apps Script (`{bot.apps_script_url[:48]}...`)"
+                if bot.modo == "apps_script"
+                else f"Cuenta de Servicio (`{bot.bot_email}`) · Hoja: `{bot.sheet_url}`"
+            )
+            st.success(f"✅ **Bot Conectado:** {detalle_conn}")
             b_c1, b_c2, b_c3 = st.columns(3)
             with b_c1:
                 if st.button("☁️ Subir CSV Locales -> Google Sheets ahora", type="primary", use_container_width=True):
@@ -777,34 +783,102 @@ elif vista.startswith("📊"):
                 if st.button("🔌 Desvincular Bot (Usar solo CSV local)", use_container_width=True):
                     bot.desconectar_bot()
                     st.rerun()
+
+            toml_str = bot.generar_toml_secrets()
+            if toml_str:
+                with st.expander("🔐 Copiar configuración para 'Settings -> Secrets' en Streamlit Cloud (Permanente)"):
+                    st.caption("Copia este bloque y pégalo en `Manage app -> Settings -> Secrets` en Streamlit Cloud para que quede fijo:")
+                    st.code(toml_str, language="toml")
         else:
             st.info(
                 "Actualmente funcionando en **Modo CSV Local (`data/*.csv`)**. "
-                "Puedes vincular tu Bot de Google Cloud pegando su JSON de credenciales abajo o mediante `st.secrets` en Streamlit Cloud."
+                "Elige abajo la **Opción A (Rápida en 1 minuto sin consola de Google Cloud)** o la **Opción B (Archivo .json de Google Cloud)**."
             )
 
-        with st.expander("⚙️ Configurar / Vincular Credenciales del Bot de Google Cloud", expanded=not bot.conectado):
+        sub_a, sub_b = st.tabs([
+            "⚡ Opción A (Recomendada - 1 min): Bot directo en Google Sheets (Sin Google Cloud)",
+            "🔑 Opción B: Bot Cuenta de Servicio de Google Cloud (Archivo .json)",
+        ])
+
+        with sub_a:
             st.markdown(
                 """
-                **Pasos rápidos para conectar tu Bot de Google:**
-                1. En Google Cloud Console habilita **Google Sheets API** y **Google Drive API**, y crea una **Cuenta de Servicio (Service Account)** descargando su clave en formato `.json`.
-                2. Crea un archivo en **Google Sheets** y compártelo (como *Editor*) con el correo `client_email` de tu bot (`...@...iam.gserviceaccount.com`).
-                3. Pega el contenido del `.json` y el enlace de tu Google Sheet aquí abajo (o en `Settings -> Secrets` de Streamlit Cloud).
+                **¿No quieres complicarte creando proyectos ni llaves en Google Cloud Console?**
+                Haz que tu propia hoja de Google Sheets actúe como Bot en **4 clics**:
+                1. Crea una hoja nueva en [sheets.new](https://sheets.new).
+                2. En el menú superior de tu hoja, haz clic en **Extensiones → Apps Script**.
+                3. Borra lo que aparece ahí, pega el siguiente código y presiona **Guardar** (💾):
                 """
             )
+            st.code(CODIGO_APPS_SCRIPT_BOT, language="javascript")
+            st.markdown(
+                """
+                4. Arriba a la derecha haz clic en el botón azul **Implementar → Nueva implementación**:
+                   * En el engranaje ⚙️ junto a *Selecciona el tipo*, elige **Aplicación web**.
+                   * En *Quién tiene acceso*, selecciona **Cualquier persona (Anyone)**.
+                   * Presiona **Implementar**, autoriza con tu cuenta y copia la **URL de la aplicación web** (`https://script.google.com/macros/s/.../exec`).
+                """
+            )
+            url_script_in = st.text_input(
+                "Pega aquí la URL de la Aplicación Web de tu Google Sheet:",
+                value=bot.apps_script_url,
+                placeholder="https://script.google.com/macros/s/AKfycb.../exec",
+            )
+            if st.button("⚡ Conectar Bot de Google Apps Script y Respaldar CSV", type="primary"):
+                ok, msg = bot.configurar_bot_apps_script(url_script_in)
+                if ok:
+                    bot.sincronizar_csv_a_sheets(motor.persistencia.ARCHIVOS_OPERACIONALES)
+                    st.success(msg)
+                    st.rerun()
+                else:
+                    st.error(msg)
+
+        with sub_b:
+            st.markdown(
+                """
+                **Pasos para conectar una Cuenta de Servicio de Google Cloud (`Service Account JSON`):**
+                1. Entra a [Google Cloud Console - Crear Proyecto](https://console.cloud.google.com/projectcreate) y crea un proyecto (ej. `sige-hito2`).
+                2. Habilita estas 2 APIs con un clic:
+                   * 👉 [Habilitar Google Sheets API](https://console.cloud.google.com/apis/library/sheets.googleapis.com)
+                   * 👉 [Habilitar Google Drive API](https://console.cloud.google.com/apis/library/drive.googleapis.com)
+                3. Ve a [Cuentas de Servicio (IAM)](https://console.cloud.google.com/iam-admin/serviceaccounts), haz clic en **+ Crear cuenta de servicio**, ponle nombre `bot-sige` y presiona **Crear y continuar → Listo**.
+                4. Haz clic sobre el correo creado (`bot-sige@...iam.gserviceaccount.com`), entra a la pestaña **Claves (Keys)** → **Agregar clave → Crear clave nueva → JSON** y se descargará un archivo `.json` a tu computador.
+                5. Abre una hoja de cálculo en [Google Sheets](https://sheets.new), presiona **Compartir** (arriba a la derecha) y pega el correo `client_email` del bot como **Editor**.
+                """
+            )
+            archivo_json = st.file_uploader(
+                "📂 1. Sube aquí el archivo .json descargado de Google Cloud (o pégalo abajo):",
+                type=["json"],
+            )
+            contenido_json_subido = ""
+            if archivo_json is not None:
+                contenido_json_subido = archivo_json.getvalue().decode("utf-8")
+                try:
+                    import json as _json
+                    datos_prev = _json.loads(contenido_json_subido)
+                    if "client_email" in datos_prev:
+                        st.info(
+                            f"📧 **Correo de tu Bot detectado:** `{datos_prev['client_email']}`\n"
+                            f"*(Asegúrate de compartir tu hoja de Google Sheets con este correo dándole permiso de Editor)*."
+                        )
+                except Exception:
+                    pass
+
             sheet_url_in = st.text_input(
-                "URL o ID de tu Google Sheet:",
+                "🔗 2. Pega el enlace (URL) de tu hoja de Google Sheets:",
                 value=bot.sheet_url,
                 placeholder="https://docs.google.com/spreadsheets/d/1abc.../edit",
             )
             creds_json_in = st.text_area(
-                "Contenido JSON de la Cuenta de Servicio (Service Account):",
-                height=160,
+                "O pega manualmente el contenido del archivo .json:",
+                value=contenido_json_subido,
+                height=130,
                 placeholder='{\n  "type": "service_account",\n  "project_id": "...",\n  "private_key": "...",\n  "client_email": "bot-sige@proyecto.iam.gserviceaccount.com"\n}',
             )
-            if st.button("🔗 Guardar y Conectar Bot de Google Cloud", type="primary"):
+            if st.button("🔗 Guardar y Conectar Bot de Google Cloud (.json)", type="primary"):
                 ok, msg = bot.configurar_bot(creds_json_in, sheet_url_in)
                 if ok:
+                    bot.sincronizar_csv_a_sheets(motor.persistencia.ARCHIVOS_OPERACIONALES)
                     st.success(msg)
                     st.rerun()
                 else:
