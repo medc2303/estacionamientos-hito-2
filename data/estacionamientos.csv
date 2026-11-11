@@ -1,0 +1,51 @@
+id_estacionamiento,propietario,departamento,horas_libres_dia_hist,desviacion_regreso_h,perfil_regularidad,margen_seguridad_min,indice_confiabilidad,semana_confirmada,hora_inicio_ofrecida,hora_fin_ofrecida,estado_actual,bloques_bloqueados,veces_asignado,en_recambio,ingresos_acumulados
+E01,Claudio González,Depto 101,9.0,0.68,PUNTUAL,30,90.5,True,08:30,16:30,LIBRE,,0,False,0
+E02,Sebastián Aro,Depto 102,10.07,0.92,PUNTUAL,30,87.1,True,08:00,17:30,ARRENDADO,,1,True,0
+E03,Martín Díaz,Depto 103,8.22,0.71,PUNTUAL,30,90.1,True,09:00,17:00,LIBRE,,0,False,0
+E04,Matías Soto,Depto 104,9.9,0.79,PUNTUAL,30,88.9,True,08:00,17:00,LIBRE,,0,False,0
+E05,Camila Vargas,Depto 105,10.57,0.52,PUNTUAL,30,92.7,True,08:30,17:30,ARRENDADO,,1,True,0
+E06,Javiera Muñoz,Depto 106,9.18,0.72,PUNTUAL,30,89.9,True,08:30,17:30,LIBRE,,0,False,0
+E07,Valentina Rojas,Depto 107,9.12,0.79,PUNTUAL,30,88.9,True,09:00,17:30,LIBRE,,0,False,0
+E08,Francisca Pérez,Depto 108,9.15,0.72,PUNTUAL,30,89.9,True,08:30,16:30,LIBRE,,0,False,0
+E09,Constanza Contreras,Depto 201,8.97,0.75,PUNTUAL,30,89.5,True,08:30,17:00,LIBRE,,0,False,0
+E10,Catalina Silva,Depto 202,8.9,0.83,PUNTUAL,30,88.4,True,08:30,16:00,LIBRE,,0,False,0
+E11,Diego Martínez,Depto 203,10.18,0.66,PUNTUAL,30,90.8,True,08:00,17:00,LIBRE,,0,False,0
+E12,Nicolás Sepúlveda,Depto 204,9.5,0.7,PUNTUAL,30,90.2,True,08:30,17:00,LIBRE,,0,False,0
+E13,Matías Morales,Depto 205,9.12,0.78,PUNTUAL,30,89.1,True,08:30,17:00,LIBRE,,0,False,0
+E14,Alejandro Rodríguez,Depto 206,8.68,0.79,PUNTUAL,30,88.9,True,08:00,16:00,LIBRE,,0,False,0
+E15,Cristóbal López,Depto 207,9.5,0.78,PUNTUAL,30,89.1,True,08:30,17:00,LIBRE,,0,False,0
+E16,Fernanda Fuentes,Depto 208,10.22,0.63,PUNTUAL,30,91.2,True,08:30,18:00,SOBREESTADIA,,1,True,0
+E17,Isidora Hernández,Depto 301,9.7,0.7,PUNTUAL,30,90.2,True,08:00,17:30,LIBRE,,0,False,0
+E18,Martina Torres,Depto 302,11.1,0.48,PUNTUAL,30,93.3,True,08:00,18:00,LIBRE,,1,True,1710
+E19,Antonia Araya,Depto 303,9.88,0.71,PUNTUAL,30,90.1,True,08:00,17:00,LIBRE,,0,False,0
+E20,Sofía Flores,Depto 304,8.47,0.63,PUNTUAL,30,91.2,True,08:30,16:30,LIBRE,,0,False,0
+E21,Benjamín Espinoza,Depto 305,8.05,0.84,PUNTUAL,30,88.2,True,10:00,17:30,LIBRE,,0,False,0
+E22,Lucas Valenzuela,Depto 306,8.22,1.01,PUNTUAL,30,85.9,True,09:00,17:00,LIBRE,,0,False,0
+E23,Tomás Castillo,Depto 307,7.9,0.93,PUNTUAL,30,87.0,True,09:00,16:00,LIBRE,,0,False,0
+E24,Joaquín Tapia,Depto 308,8.18,0.63,PUNTUAL,30,91.2,True,10:00,17:30,LIBRE,,0,False,0
+E25,Maximiliano Reyes,Depto 401,7.62,1.0,PUNTUAL,30,86.0,True,09:30,15:30,LIBRE,,0,False,0
+E26,Daniela Gutiérrez,Depto 402,7.47,0.77,PUNTUAL,30,89.2,True,10:00,17:00,LIBRE,,0,False,0
+E27,Macarena Castro,Depto 403,9.35,0.68,PUNTUAL,30,90.5,True,08:30,17:30,LIBRE,,0,False,0
+E28,Natalia Pizarro,Depto 404,8.82,0.76,PUNTUAL,30,89.4,True,09:30,17:30,LIBRE,,0,False,0
+E29,Carolina Álvarez,Depto 405,9.25,0.74,PUNTUAL,30,89.6,True,09:00,18:00,LIBRE,,0,False,0
+E30,Paulina Vásquez,Depto 406,6.88,0.74,PUNTUAL,30,89.6,False,Sin oferta,Sin oferta,OCUPADO_DUENO,,0,False,0
+E31,Rodrigo Sánchez,Depto 407,3.75,2.56,IRREGULAR,60,64.2,False,Sin oferta,Sin oferta,OCUPADO_DUENO,,0,False,0
+E32,Felipe Fernández,Depto 408,3.65,2.46,IRREGULAR,60,65.6,False,Sin oferta,Sin oferta,OCUPADO_DUENO,,0,False,0
+E33,Ignacio Carrasco,Depto 501,2.55,2.92,IRREGULAR,60,59.1,False,Sin oferta,Sin oferta,OCUPADO_DUENO,,0,False,0
+E34,Gonzalo Gómez,Depto 502,2.9,2.59,IRREGULAR,60,63.7,False,Sin oferta,Sin oferta,OCUPADO_DUENO,,0,False,0
+E35,Pablo Cortés,Depto 503,5.53,1.86,IRREGULAR,60,74.0,False,Sin oferta,Sin oferta,OCUPADO_DUENO,,0,False,0
+E36,Andrea Herrera,Depto 504,4.28,2.46,IRREGULAR,60,65.6,False,Sin oferta,Sin oferta,OCUPADO_DUENO,,0,False,0
+E37,Lorena Núñez,Depto 505,3.45,2.54,IRREGULAR,60,64.4,False,Sin oferta,Sin oferta,OCUPADO_DUENO,,0,False,0
+E38,Claudia Jara,Depto 506,4.25,2.17,IRREGULAR,60,69.6,False,Sin oferta,Sin oferta,OCUPADO_DUENO,,0,False,0
+E39,Marcela Vergara,Depto 507,5.9,0.6,PUNTUAL,30,91.6,True,08:30,17:00,LIBRE,,0,False,0
+E40,Patricia Rivera,Depto 508,5.95,0.54,PUNTUAL,30,92.4,True,15:30,17:00,LIBRE,,0,False,0
+E41,Mauricio Figueroa,Depto 601,6.17,0.54,PUNTUAL,30,92.4,True,08:30,17:30,LIBRE,,0,False,0
+E42,Eduardo Riquelme,Depto 602,6.05,0.56,PUNTUAL,30,92.2,True,08:30,17:00,LIBRE,,0,False,0
+E43,Hernán García,Depto 603,5.88,0.4,PUNTUAL,30,94.4,True,15:00,17:00,LIBRE,,0,False,0
+E44,Roberto Miranda,Depto 604,5.97,0.56,PUNTUAL,30,92.2,True,08:30,17:00,LIBRE,,0,False,0
+E45,Carlos Bravo,Depto 605,6.03,0.78,PUNTUAL,30,89.1,True,15:30,17:00,LIBRE,,0,False,0
+E46,Verónica Vera,Depto 606,7.7,0.72,PUNTUAL,30,89.9,True,13:30,19:30,LIBRE,,0,False,0
+E47,Mónica Molina,Depto 607,7.6,0.73,PUNTUAL,30,89.8,True,13:00,19:30,LIBRE,,0,False,0
+E48,Cecilia Vega,Depto 608,8.1,0.83,PUNTUAL,30,88.4,True,13:00,20:30,LIBRE,,0,False,0
+E49,Paola Campos,Depto 701,6.88,0.86,PUNTUAL,30,88.0,True,14:30,19:30,LIBRE,,0,False,0
+E50,Beatriz Sandoval,Depto 702,8.45,0.88,PUNTUAL,30,87.7,True,13:30,20:30,LIBRE,,0,False,0

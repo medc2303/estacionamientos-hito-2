@@ -1,0 +1,6 @@
+id_evento,fecha_hora_registro,tipo_evento,rol_actor,id_estacionamiento,id_reserva,propietario,cliente,fecha_operacion,hora_inicio,hora_fin,estado_resultante,valor_operacion,detalle
+EVT-0001,2026-08-28 08:00:00,CONFIRMACION_SEMANA,Propietario,E18,-,Martina Torres,-,2026-08-28,08:00,18:00,LIBRE,0,"Propietario confirmó disponibilidad semanal sugerida con 1 clic (θ=0.80, margen 30 min)."
+EVT-0002,2026-08-28 08:45:00,CREACION_RESERVA,Cliente,E18,RES-1001,Martina Torres,Pedro Saldivia (Registro Civil),2026-08-28,09:00,11:00,CONFIRMADA,3000,Asignación ciega a E18 (mayor disponibilidad). E18 pasa a estado de Recambio para rotar lotes.
+EVT-0003,2026-08-28 10:54:00,CHECK_OUT_QR,Cliente/Guardia,E18,RES-1001,Martina Torres,Pedro Saldivia (Registro Civil),2026-08-28,09:00,10:54,FINALIZADA,2850,Salida validada con QR (114 min reales Ley 20.967 = $2850). Reparto 60/30/5/5 aplicado.
+EVT-0004,2026-08-28 09:50:00,CREACION_RESERVA,Cliente,E05,RES-1002,Camila Vargas,Dra. Marcela Ojeda,2026-08-28,10:00,14:00,EN_CURSO,6000,Check-in QR realizado en portería. E05 marcado en cola de recambio tras su selección.
+EVT-0005,2026-08-28 11:50:00,ALERTA_SOBREESTADIA,Sistema/Admin,E16,RES-1004,Fernanda Fuentes,abogado Felipe Méndez,2026-08-28,09:30,11:30,SOBREESTADIA,5500,Exceso de 20 min detectado sobre hora fin (11:30). Se activa tarifa penalizada x5 ($125/min).
