@@ -1,10 +1,3 @@
-"""
-Aplicación Web en Streamlit — SIGE (Sistema Inteligente de Gestión de Estacionamientos)
-Entrega 2 · Hito Evaluativo Integrativo (Basado en la Solemne 1 - Edificio Residencial Puerto Montt)
-Autores: Claudio González, Sebastián Aro, Martín Díaz, Matías Soto
-Docente: Manuel Reveco
-"""
-
 from __future__ import annotations
 import os
 import pandas as pd
@@ -13,17 +6,12 @@ import streamlit as st
 from core.engine import (
     MotorSIGE,
     BLOQUES_30_MIN,
-    TABLA_5_1_UMBRALES,
     hora_a_minutos,
 )
-from core.persistence import CODIGO_APPS_SCRIPT_BOT
 
-# Configuración de página
 st.set_page_config(
-    page_title="SIGE · Gestión Eficiente de Estacionamientos (Hito 2)",
-    page_icon="🅿️",
+    page_title="SIGE - Hito 2",
     layout="wide",
-    initial_sidebar_state="expanded",
 )
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
@@ -35,8 +23,7 @@ def obtener_motor() -> MotorSIGE:
     return st.session_state["motor_sige"]
 
 
-def generar_qr_svg(texto_qr: str, size: int = 170) -> str:
-    """Genera un código QR determinista en SVG limpio (sin requerir librerías externas de imagen)."""
+def generar_qr_svg(texto_qr: str, size: int = 150) -> str:
     n = 21
     grid = [[0 for _ in range(n)] for _ in range(n)]
 
@@ -66,249 +53,70 @@ def generar_qr_svg(texto_qr: str, size: int = 170) -> str:
                 x = c * celda
                 y = r * celda
                 rects.append(
-                    f'<rect x="{x:.1f}" y="{y:.1f}" width="{celda + 0.4:.1f}" height="{celda + 0.4:.1f}" fill="#1e293b"/>'
+                    f'<rect x="{x:.1f}" y="{y:.1f}" width="{celda + 0.4:.1f}" height="{celda + 0.4:.1f}" fill="#000000"/>'
                 )
-    svg = (
+    return (
         f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" '
-        f'style="background:#ffffff;padding:10px;border-radius:12px;border:2px solid #cbd5e1;">'
+        f'style="background:#ffffff;padding:8px;border:1px solid #000000;">'
         + "".join(rects)
         + "</svg>"
     )
-    return svg
 
-
-# Estilos CSS inspirados en la Maqueta de la Figura 7.1 de la Solemne 1
-st.markdown(
-    """
-    <style>
-    .sige-header {
-        background: linear-gradient(135deg, #1e293b 0%, #293548 100%);
-        color: #ffffff;
-        padding: 1.1rem 1.5rem;
-        border-radius: 12px;
-        margin-bottom: 1rem;
-        border-left: 6px solid #4d9b86;
-    }
-    .sige-header h2 { margin: 0; font-size: 1.45rem; color: #ffffff; }
-    .sige-header p { margin: 0.25rem 0 0 0; font-size: 0.9rem; color: #cbd5e1; }
-    .maqueta-card {
-        background: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 14px;
-        padding: 1.2rem;
-        box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05);
-        margin-bottom: 1rem;
-    }
-    .maqueta-title {
-        background: #232d3b;
-        color: #ffffff;
-        padding: 0.55rem 0.9rem;
-        border-radius: 8px;
-        font-weight: 600;
-        font-size: 0.95rem;
-        text-align: center;
-        margin-bottom: 0.9rem;
-    }
-    .spot-grid {
-        display: grid;
-        grid-template-columns: repeat(10, 1fr);
-        gap: 6px;
-        margin: 10px 0;
-    }
-    .spot-box {
-        padding: 7px 4px;
-        border-radius: 7px;
-        text-align: center;
-        font-size: 0.78rem;
-        font-weight: 700;
-        color: #ffffff;
-        line-height: 1.15;
-    }
-    .spot-libre { background-color: #5ea867; }
-    .spot-dueno { background-color: #88929b; }
-    .spot-arrendado { background-color: #4180c4; }
-    .spot-sobreestadia { background-color: #d64545; }
-    .recambio-tag {
-        display: inline-block;
-        background: rgba(255,255,255,0.24);
-        border-radius: 4px;
-        padding: 1px 4px;
-        font-size: 0.63rem;
-        margin-top: 2px;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
 
 motor = obtener_motor()
 kpis = motor.obtener_resumen_kpis()
 
-# =============================================================================
-# BARRA LATERAL: NAVEGACIÓN, ESTADO DEL BOT DE GOOGLE CLOUD Y DATOS DE PRUEBA
-# =============================================================================
-with st.sidebar:
-    st.markdown("### 🅿️ **SIGE · Puerto Montt**")
-    st.caption("Hito Evaluativo 2 · Implementación en Python")
+st.title("Sistema de Gestion de Estacionamientos (Hito 2)")
 
-    vista = st.radio(
-        "Seleccionar Rol / Pantalla:",
-        [
-            "🏠 1. Mi Espacio · Propietario",
-            "🚗 2. Reserva y QR · Cliente",
-            "🛡️ 3. Monitor · Administración",
-            "📊 4. Datos CSV y Bot Google",
-        ],
-    )
-
-    st.divider()
-    st.markdown("#### 🔄 **Cola de Prioridad y Recambio**")
-    confirmados_tot = sum(1 for e in motor.estacionamientos if e.semana_confirmada)
-    en_recambio_tot = kpis["en_recambio"]
-    prioridad_alta_tot = max(0, confirmados_tot - en_recambio_tot)
-    st.caption(
-        f"• **Prioridad Principal (sin usar en ciclo):** `{prioridad_alta_tot}` lotes\n"
-        f"• **En Cola de Recambio (ya usados):** `{en_recambio_tot}` lotes\n"
-        f"• **Umbral activo (θ):** `{motor.theta:.2f}`"
-    )
-
-    st.divider()
-    st.markdown("#### 🤖 **Estado Persistencia CSV / Bot**")
-    if motor.persistencia.bot_google.conectado:
-        st.success(f"🟢 {motor.persistencia.bot_google.ultimo_estado}")
-    else:
-        st.info("💾 CSV Local Activo (`data/*.csv`)\nListo para vincular Bot Google Cloud en pestaña 4.")
-
-    if st.button("🔄 Restaurar Datos Semilla (Hito 1)", use_container_width=True):
-        motor.persistencia.inicializar_si_no_existe(forzar_reinicio=True)
-        motor.recargar()
-        st.toast("Datos semilla del Hito 1 restaurados en CSV.", icon="✅")
-        st.rerun()
-
-# Encabezado superior con KPIs rápidos del edificio
-st.markdown(
-    f"""
-    <div class="sige-header">
-        <h2>🅿️ SIGE · Gestión Eficiente de Estacionamientos (Edificio Residencial Puerto Montt)</h2>
-        <p>50 Estacionamientos (E01–E50) · Regla de oferta θ = {motor.theta:.2f} con margen 30/60 min · Tarifa Ley 20.967: $25/min ($1.500/h) · Reparto: 60% Dueño / 30% Comunidad / 5% Guardia / 5% Operación</p>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("🟢 Libres Ofrecidos", f"{kpis['libres']} / 50")
-c2.metric("🔵 Arrendados / En Uso", f"{kpis['arrendados']}")
-c3.metric("🔄 En Pool de Recambio", f"{kpis['en_recambio']} lotes")
-c4.metric("🔴 Alertas Sobreestadía", f"{kpis['sobreestadia']}")
-c5.metric("💰 Recaudación Total", f"${kpis['ingreso_bruto']:,}")
-
+tab_prop, tab_cli, tab_adm, tab_datos = st.tabs([
+    "Propietario",
+    "Cliente",
+    "Administrador",
+    "Datos CSV y Bot Google",
+])
 
 # =============================================================================
-# VISTA 1: PROPIETARIO (OBLIGATORIA: LIBERAR/BLOQUEAR + PROPIA: CONFIRMAR SEMANA MIXTA)
+# PESTANA 1: PROPIETARIO
 # =============================================================================
-if vista.startswith("🏠"):
-    st.subheader("🏠 Portal del Propietario — *Mi Espacio · Propietario*")
-    st.caption(
-        "Implementa **Funcionalidad Obligatoria** (Liberar y bloquear estacionamiento + Botón *'¡Llegué antes!'* con contingencia automática) "
-        "y **Funcionalidad Propia (F1)** (Confirmar disponibilidad semanal mixta con 1 clic según umbral θ y margen de seguridad 30/60 min)."
-    )
-
+with tab_prop:
     opciones_est = [
-        f"{e.id_estacionamiento} — {e.propietario} ({e.departamento}) · [{e.estado_actual}]"
+        f"{e.id_estacionamiento} - {e.propietario} ({e.departamento}) [{e.estado_actual}]"
         for e in motor.estacionamientos
     ]
-    seleccion = st.selectbox("Selecciona tu Estacionamiento:", opciones_est, index=1)  # E02 por defecto (tiene reserva para probar contingencia)
-    spot_id = seleccion.split(" — ")[0]
-    est = motor.obtener_estacionamiento(spot_id)
+    seleccion_prop = st.selectbox("Estacionamiento", opciones_est, index=1, key="sel_est_prop")
+    spot_id_prop = seleccion_prop.split(" - ")[0]
+    est = motor.obtener_estacionamiento(spot_id_prop)
 
-    col_izq, col_der = st.columns([1.05, 1.15])
+    p_col1, p_col2, p_col3, p_col4, p_col5 = st.columns(5)
+    p_col1.metric("Estado", est.estado_actual)
+    p_col2.metric("Horario Ofrecido", f"{est.hora_inicio_ofrecida} - {est.hora_fin_ofrecida}")
+    p_col3.metric("Perfil / Margen", f"{est.perfil_regularidad} ({est.margen_seguridad_min}m)")
+    p_col4.metric("Cola Rotacion", "En Recambio" if est.en_recambio else "Prioridad Principal")
+    p_col5.metric("Ingresos Acumulados", f"${est.ingresos_acumulados:,}")
 
-    with col_izq:
-        st.markdown('<div class="maqueta-title">Mi Espacio · Propietario (Maqueta Hito 1)</div>', unsafe_allow_html=True)
+    sub_prop1, sub_prop2, sub_prop3 = st.tabs([
+        "Liberar o Bloquear",
+        "Emergencia Llegue Antes",
+        "Confirmar Semana y Perfil",
+    ])
 
-        estado_cola = (
-            "🔄 En Estacionamiento de Recambio (ya fue elegido en este ciclo)"
-            if est.en_recambio
-            else "⭐ Prioridad Principal Activa (listo para ser asignado)"
-        )
-        st.info(
-            f"**Según tu rutina histórica ({est.horas_libres_dia_hist} h libres/día)**, tu estacionamiento "
-            f"**{est.id_estacionamiento}** se sugiere disponible de lunes a viernes de "
-            f"**{est.hora_inicio_ofrecida} a {est.hora_fin_ofrecida}**.\n\n"
-            f"• **Perfil del propietario:** `{est.perfil_regularidad}` (Variación regreso: `{est.desviacion_regreso_h} h` → "
-            f"**Margen de seguridad: {est.margen_seguridad_min} min**)\n"
-            f"• **Índice de confiabilidad:** `{est.indice_confiabilidad:.1f}%` | **Veces usado:** `{est.veces_asignado}`\n"
-            f"• **Estado en rotación:** {estado_cola}\n"
-            f"• **Ingresos acumulados (60% Propietario - F3):** **${est.ingresos_acumulados:,}**"
-        )
-
-        # Barras visuales L M X J V como en la maqueta de la Figura 7.1
-        dias_sem = ["L", "M", "X", "J", "V"]
-        color_barra = "#4d9b86" if est.semana_confirmada and est.estado_actual != "BLOQUEADO" else "#94a3b8"
-        cols_dias = st.columns(5)
-        for i, d in enumerate(dias_sem):
-            with cols_dias[i]:
-                st.markdown(
-                    f"""
-                    <div style="text-align:center;font-weight:700;margin-bottom:4px;">{d}</div>
-                    <div style="height:95px;background:{color_barra};border-radius:6px;display:flex;
-                                align-items:center;justify-content:center;color:white;font-size:0.75rem;padding:4px;text-align:center;">
-                        {est.hora_inicio_ofrecida}<br>a<br>{est.hora_fin_ofrecida}
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-        st.markdown("##### ✨ **Funcionalidad Propia del Propietario (F1): Disponibilidad Mixta**")
-        nuevo_perfil = st.selectbox(
-            "Ajustar condición de regularidad / margen de seguridad:",
-            ["PUNTUAL", "IRREGULAR"],
-            index=0 if est.perfil_regularidad == "PUNTUAL" else 1,
-            help="Puntual (<1,5h variación): exige 30 min (1 bloque) de margen y permite reservas largas. Irregular (>=1,5h): exige 60 min (2 bloques) y reservas de máx. 2 horas.",
-        )
-        if st.button("✅ Confirmar semana sugerida con 1 clic (F1)", type="primary", use_container_width=True):
-            ok, msg = motor.propietario_confirmar_semana_mixta(est.id_estacionamiento, nuevo_perfil=nuevo_perfil)
+    with sub_prop1:
+        if st.button("Liberar estacionamiento", key="btn_liberar_prop"):
+            ok, msg = motor.propietario_liberar_estacionamiento(est.id_estacionamiento, limpiar_bloqueos=True)
             if ok:
                 st.success(msg)
             else:
-                st.warning(msg)
-            st.rerun()
-
-    with col_der:
-        st.markdown('<div class="maqueta-title">Funcionalidad Obligatoria: Liberar / Bloquear y Prioridad del Dueño</div>', unsafe_allow_html=True)
-
-        # Mostrar reservas vigentes en este estacionamiento
-        res_en_lote = [
-            r for r in motor.reservas
-            if r.id_estacionamiento == est.id_estacionamiento
-            and r.estado in ("CONFIRMADA", "EN_CURSO", "SOBREESTADIA")
-        ]
-        if res_en_lote:
-            for r in res_en_lote:
-                st.warning(
-                    f"📌 **Reserva vigente en {est.id_estacionamiento}:** `{r.id_reserva}` — Cliente: **{r.cliente}** "
-                    f"({r.hora_inicio} a {r.hora_fin}) · Estado: `{r.estado}`.\n"
-                    f"*(Si bloqueas este horario o presionas '¡Llegué antes!', el sistema reasignará automáticamente al cliente a un Estacionamiento de Recambio)*."
-                )
-        else:
-            st.caption(f"Actualmente no hay reservas activas ocupando `{est.id_estacionamiento}`.")
-
-        st.markdown("##### 🔓 **Opción A: Liberar estacionamiento**")
-        if st.button("🟢 Liberar y habilitar mi estacionamiento ahora", use_container_width=True):
-            ok, msg = motor.propietario_liberar_estacionamiento(est.id_estacionamiento, limpiar_bloqueos=True)
-            st.success(msg)
-            st.rerun()
+                st.error(msg)
 
         st.divider()
-        st.markdown("##### 🔒 **Opción B: Bloquear tramo horario específico**")
+
         b_col1, b_col2 = st.columns(2)
         with b_col1:
-            h_ini_bloq = st.selectbox("Hora inicio bloqueo:", BLOQUES_30_MIN, index=10, key="bloq_ini")
+            h_ini_bloq = st.selectbox("Hora inicio bloqueo", BLOQUES_30_MIN, index=10, key="bloq_ini")
         with b_col2:
-            h_fin_bloq = st.selectbox("Hora término bloqueo:", BLOQUES_30_MIN, index=16, key="bloq_fin")
+            h_fin_bloq = st.selectbox("Hora termino bloqueo", BLOQUES_30_MIN, index=16, key="bloq_fin")
 
-        if st.button("🔒 Bloquear rango horario seleccionado", use_container_width=True):
+        if st.button("Bloquear rango horario", key="btn_bloq_prop"):
             ok, msg = motor.propietario_bloquear_o_llegue_antes(
                 spot_id=est.id_estacionamiento,
                 fecha=motor.config.get("fecha_operacion_actual", "2026-08-28"),
@@ -317,17 +125,22 @@ if vista.startswith("🏠"):
                 es_emergencia_llegue_antes=False,
             )
             if ok:
-                st.info(msg)
+                st.success(msg)
             else:
                 st.error(msg)
 
-        st.divider()
-        st.markdown("##### 🚨 **Opción C: Botón de Emergencia «¡Llegué antes!» (F2 · Prioridad Absoluta)**")
-        st.caption(
-            "Regla RN01 de Solemne 1: El dueño nunca pierde su prioridad. Si vuelve antes, el sistema "
-            "pasa la reserva vigente a un **Estacionamiento de Recambio** sin que el cliente pierda su cupo."
-        )
-        if st.button("🛑 ¡Llegué antes! Necesito mi espacio ahora (F2)", use_container_width=True):
+    with sub_prop2:
+        res_en_lote = [
+            r for r in motor.reservas
+            if r.id_estacionamiento == est.id_estacionamiento
+            and r.estado in ("CONFIRMADA", "EN_CURSO", "SOBREESTADIA")
+        ]
+        if res_en_lote:
+            st.dataframe(pd.DataFrame([r.to_dict() for r in res_en_lote]), use_container_width=True)
+        else:
+            st.write("Sin reservas activas en este estacionamiento.")
+
+        if st.button("Llegue antes (Reclamar mi estacionamiento ahora)", key="btn_llegue_antes"):
             ok, msg = motor.propietario_bloquear_o_llegue_antes(
                 spot_id=est.id_estacionamiento,
                 fecha=motor.config.get("fecha_operacion_actual", "2026-08-28"),
@@ -340,66 +153,44 @@ if vista.startswith("🏠"):
             else:
                 st.error(msg)
 
+    with sub_prop3:
+        nuevo_perfil = st.selectbox(
+            "Perfil de regularidad",
+            ["PUNTUAL", "IRREGULAR"],
+            index=0 if est.perfil_regularidad == "PUNTUAL" else 1,
+            key="sel_perfil_prop",
+        )
+        if st.button("Confirmar disponibilidad semanal", key="btn_conf_sem"):
+            ok, msg = motor.propietario_confirmar_semana_mixta(est.id_estacionamiento, nuevo_perfil=nuevo_perfil)
+            if ok:
+                st.success(msg)
+            else:
+                st.warning(msg)
 
 # =============================================================================
-# VISTA 2: CLIENTE (OBLIGATORIA: RESERVAR/CANCELAR + PROPIA: QR PORTERÍA Y LEY 20.967)
+# PESTANA 2: CLIENTE
 # =============================================================================
-elif vista.startswith("🚗"):
-    st.subheader("🚗 Portal del Cliente y Portería QR — *Reserva y Acceso QR*")
-    st.caption(
-        "Implementa **Funcionalidad Obligatoria (F4)** (Reservar sin elegir el espacio mediante el Motor Equitativo con Cola de Recambio, "
-        "y cancelar/liberar anticipadamente) y **Funcionalidad Propia (F5 + F10)** (Check-in/Check-out con QR y cobro exacto por minuto Ley N° 20.967)."
-    )
+with tab_cli:
+    sub_cli1, sub_cli2, sub_cli3 = st.tabs([
+        "Reservar Estacionamiento",
+        "Cancelar o Liberar Reserva",
+        "Acceso QR Porteria",
+    ])
 
-    col_res, col_qr = st.columns([1.05, 1.15])
-
-    with col_res:
-        st.markdown('<div class="maqueta-title">Reserva · Cliente (F4 · Asignación Ciega y Equitativa)</div>', unsafe_allow_html=True)
-        st.markdown("##### **¿Cuándo necesitas estacionar?**")
-
-        nom_cliente = st.text_input("Nombre del Cliente:", value="Carolina Mansilla (Visita Centro)")
-        pat_cliente = st.text_input("Patente del Vehículo:", value="BCDF-91")
+    with sub_cli1:
+        nom_cliente = st.text_input("Nombre del cliente", value="Carolina Mansilla")
+        pat_cliente = st.text_input("Patente", value="BCDF-91")
         c_h1, c_h2 = st.columns(2)
         with c_h1:
-            h_llegada = st.selectbox("Hora de Llegada:", BLOQUES_30_MIN, index=8)   # 10:00
+            h_llegada = st.selectbox("Hora de llegada", BLOQUES_30_MIN, index=8, key="cli_llegada")
         with c_h2:
-            h_salida = st.selectbox("Hora de Salida:", BLOQUES_30_MIN, index=12)    # 12:00
+            h_salida = st.selectbox("Hora de salida", BLOQUES_30_MIN, index=12, key="cli_salida")
 
         dur_estimada = max(0, hora_a_minutos(h_salida) - hora_a_minutos(h_llegada))
         tarifa_estimada = dur_estimada * 25
+        st.write(f"Duracion: {dur_estimada} min | Tarifa estimada: ${tarifa_estimada:,} ($25/min)")
 
-        st.markdown(
-            f"""
-            <div style="background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:12px;text-align:center;margin:10px 0;">
-                <div style="font-size:1.1rem;font-weight:700;color:#1e293b;">
-                    Tarifa estimada: ${tarifa_estimada:,} ({dur_estimada} min × $25/min)
-                </div>
-                <div style="font-size:0.82rem;color:#64748b;margin-top:4px;">
-                    Ley N° 20.967: Cobro por minuto real de uso sin redondear hacia arriba.<br>
-                    <b>El sistema te asigna un espacio automáticamente</b> priorizando a los propietarios con mayor disponibilidad y enviando los lotes ya usados a la <b>Cola de Recambio</b>.
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        # Vista previa de candidatos que evalúa el motor
-        candidatos_prev = motor.buscar_candidatos_ordenados(
-            fecha=motor.config.get("fecha_operacion_actual", "2026-08-28"),
-            hora_inicio=h_llegada,
-            hora_fin=h_salida,
-        )
-        if dur_estimada > 0:
-            if candidatos_prev:
-                mejor_est, razon_mejor = candidatos_prev[0]
-                st.caption(
-                    f"🎯 **Disponibilidad verificada:** `{len(candidatos_prev)}` estacionamientos compatibles "
-                    f"(con θ={motor.theta:.2f} + margen 30/60 min). Próximo en la cola equitativa: **{mejor_est.id_estacionamiento}** ({razon_mejor})."
-                )
-            else:
-                st.caption("⚠️ Ningún estacionamiento cumple umbral θ + margen en ese rango horario.")
-
-        if st.button("🟠 Reservar Espacio Ahora (F4)", type="primary", use_container_width=True):
+        if st.button("Reservar", key="btn_reservar_cli"):
             ok, msg, nueva_res = motor.cliente_crear_reserva(
                 cliente=nom_cliente,
                 patente=pat_cliente,
@@ -413,8 +204,7 @@ elif vista.startswith("🚗"):
             else:
                 st.error(msg)
 
-        st.divider()
-        st.markdown("##### 🛑 **Cancelar o Liberar Anticipadamente una Reserva (Obligatoria Cliente)**")
+    with sub_cli2:
         res_activas_cli = [
             r for r in motor.reservas if r.estado in ("CONFIRMADA", "EN_CURSO")
         ]
@@ -423,27 +213,30 @@ elif vista.startswith("🚗"):
                 f"{r.id_reserva} | {r.id_estacionamiento} | {r.cliente} ({r.hora_inicio}-{r.hora_fin}) [{r.estado}]"
                 for r in res_activas_cli
             ]
-            sel_res_cli = st.selectbox("Selecciona tu reserva vigente:", op_cli)
+            sel_res_cli = st.selectbox("Reserva activa", op_cli, key="sel_res_cancel")
             id_sel_cli = sel_res_cli.split(" | ")[0]
             obj_res_cli = motor.obtener_reserva(id_sel_cli)
 
             col_c1, col_c2 = st.columns(2)
             with col_c1:
-                if st.button("❌ Cancelar Reserva (Antes de entrar)", use_container_width=True):
-                    ok, msg = motor.cliente_cancelar_o_liberar_reserva(id_sel_cli, minutos_usados_si_anticipada=None)
+                if st.button("Cancelar reserva", key="btn_cancel_cli"):
+                    ok, msg = motor.cliente_cancelar_o_liberar_reserva(
+                        id_sel_cli, minutos_usados_si_anticipada=None
+                    )
                     if ok:
                         st.success(msg)
                     else:
                         st.warning(msg)
             with col_c2:
                 min_ant = st.number_input(
-                    "Minutos usados al salir antes:",
+                    "Minutos utilizados",
                     min_value=5,
                     max_value=max(10, obj_res_cli.duracion_reservada_min),
                     value=max(15, obj_res_cli.duracion_reservada_min // 2),
                     step=5,
+                    key="num_min_ant",
                 )
-                if st.button("⏱️ Liberar Anticipadamente (Cobro real)", use_container_width=True):
+                if st.button("Liberar anticipadamente", key="btn_lib_ant_cli"):
                     ok, msg = motor.cliente_cancelar_o_liberar_reserva(
                         id_sel_cli, minutos_usados_si_anticipada=int(min_ant)
                     )
@@ -452,14 +245,12 @@ elif vista.startswith("🚗"):
                     else:
                         st.warning(msg)
         else:
-            st.info("No hay reservas en estado CONFIRMADA o EN_CURSO para cancelar/liberar.")
+            st.write("No hay reservas activas.")
 
-    with col_qr:
-        st.markdown('<div class="maqueta-title">Acceso · Cliente y Portería QR (F5 + F10 · Ley 20.967)</div>', unsafe_allow_html=True)
-
+    with sub_cli3:
         todas_res = list(reversed(motor.reservas))
         opciones_qr = [
-            f"{r.id_reserva} — {r.codigo_qr} ({r.cliente} · Lote {r.id_estacionamiento} · {r.estado})"
+            f"{r.id_reserva} - {r.codigo_qr} ({r.cliente} | {r.id_estacionamiento} | {r.estado})"
             for r in todas_res
         ]
         idx_def = 0
@@ -469,54 +260,38 @@ elif vista.startswith("🚗"):
                     idx_def = i
                     break
 
-        sel_qr = st.selectbox("Seleccionar Pase QR de Reserva:", opciones_qr, index=idx_def)
-        res_qr_id = sel_qr.split(" — ")[0]
+        sel_qr = st.selectbox("Reserva / Codigo QR", opciones_qr, index=idx_def, key="sel_qr_cli")
+        res_qr_id = sel_qr.split(" - ")[0]
         res_qr = motor.obtener_reserva(res_qr_id)
 
         if res_qr:
-            svg_qr = generar_qr_svg(res_qr.codigo_qr, size=165)
-            st.markdown(
-                f"""
-                <div style="background:#ffffff;border:1px solid #cbd5e1;border-radius:12px;padding:16px;text-align:center;">
-                    <div style="font-weight:700;font-size:1.05rem;color:#1e293b;margin-bottom:8px;">
-                        Reserva {res_qr.id_reserva} · Estado: {res_qr.estado}
-                    </div>
-                    <div style="display:flex;justify-content:center;margin:8px 0;">{svg_qr}</div>
-                    <div style="font-family:monospace;font-weight:700;color:#0f172a;background:#f1f5f9;padding:4px 10px;border-radius:6px;display:inline-block;">
-                        {res_qr.codigo_qr}
-                    </div>
-                    <div style="font-size:0.86rem;color:#475569;margin-top:8px;">
-                        Muestra este código en portería · Estacionamiento asignado: <b>{res_qr.id_estacionamiento}</b> ({res_qr.propietario})<br>
-                        Horario reservado: <b>{res_qr.hora_inicio} — {res_qr.hora_fin}</b> ({res_qr.duracion_reservada_min} min)
-                    </div>
-                    <div style="font-size:0.78rem;color:#0284c7;margin-top:6px;">
-                        <b>Trazabilidad de Selección:</b> {res_qr.criterio_asignacion}
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            q_info_col, q_act_col = st.columns([1, 2])
+            with q_info_col:
+                st.markdown(generar_qr_svg(res_qr.codigo_qr, size=140), unsafe_allow_html=True)
+                st.write(f"Codigo: `{res_qr.codigo_qr}`")
+                st.write(f"Estacionamiento: `{res_qr.id_estacionamiento}`")
+                st.write(f"Horario: `{res_qr.hora_inicio} - {res_qr.hora_fin}`")
+                st.write(f"Estado: `{res_qr.estado}`")
 
-            st.markdown("##### 🛂 **Control de Acceso en Portería (Guardia / Cliente — F5 y F10)**")
-            q_col1, q_col2 = st.columns(2)
-            with q_col1:
-                if st.button("📲 1. Escanear QR al Entrar (Check-in)", use_container_width=True):
+            with q_act_col:
+                if st.button("Check-in (Entrada)", key="btn_checkin"):
                     ok, msg = motor.cliente_procesar_qr_porteria(res_qr.codigo_qr, accion="CHECK_IN")
                     if ok:
                         st.success(msg)
                     else:
                         st.warning(msg)
 
-            with q_col2:
+                st.divider()
+
                 min_reales_out = st.number_input(
-                    "Minutos reales de estadía (Check-out):",
+                    "Minutos reales de estadia",
                     min_value=1,
                     max_value=600,
                     value=int(res_qr.duracion_reservada_min),
                     step=5,
-                    help="Si es menor o igual a lo reservado, cobra $25/min exactos (Ley 20.967). Si supera lo reservado, cobra recargo x5 ($125/min) por el exceso.",
+                    key="num_min_out",
                 )
-                if st.button("🏁 2. Escanear QR al Salir (Check-out y Cobro)", type="primary", use_container_width=True):
+                if st.button("Check-out (Salida y Cobro)", key="btn_checkout"):
                     ok, msg = motor.cliente_procesar_qr_porteria(
                         res_qr.codigo_qr, accion="CHECK_OUT", minutos_reales=int(min_reales_out)
                     )
@@ -525,77 +300,55 @@ elif vista.startswith("🚗"):
                     else:
                         st.warning(msg)
 
-
 # =============================================================================
-# VISTA 3: ADMINISTRACIÓN (OBLIGATORIA: ASIGNAR/REASIGNAR + PROPIA: CONTINGENCIAS Y UMBRAL θ)
+# PESTANA 3: ADMINISTRADOR
 # =============================================================================
-elif vista.startswith("🛡️"):
-    st.subheader("🛡️ Monitor de Administración — *Control en Vivo, Reasignación y Regla de Oferta*")
-    st.caption(
-        "Implementa **Mapa de Ocupación en Vivo (F6)**, **Funcionalidad Obligatoria (F9)** (Asignar y reasignar estacionamientos "
-        "verificando disponibilidad y usando el Pool de Recambio) y **Funcionalidad Propia (F7 + F8)** (Gestión de sobreestadía ×5 y calibración del umbral θ)."
-    )
+with tab_adm:
+    sub_adm1, sub_adm2, sub_adm3, sub_adm4 = st.tabs([
+        "Mapa de Ocupacion",
+        "Asignar y Reasignar",
+        "Sobreestadia",
+        "Umbral Theta y Recambio",
+    ])
 
-    # 1. MAPA DE OCUPACIÓN EN VIVO DE LOS 50 ESTACIONAMIENTOS (MAQUETA FIG. 7.1)
-    st.markdown('<div class="maqueta-title">Monitor · Administración — Mapa de Ocupación en Vivo (50 Estacionamientos E01–E50)</div>', unsafe_allow_html=True)
+    with sub_adm1:
+        m1, m2, m3, m4, m5 = st.columns(5)
+        m1.metric("Libres", f"{kpis['libres']} / 50")
+        m2.metric("Arrendados", f"{kpis['arrendados']}")
+        m3.metric("En Recambio", f"{kpis['en_recambio']}")
+        m4.metric("Sobreestadia", f"{kpis['sobreestadia']}")
+        m5.metric("Recaudacion Total", f"${kpis['ingreso_bruto']:,}")
 
-    celdas_html = []
-    for e in motor.estacionamientos:
-        if e.estado_actual == "LIBRE":
-            clase = "spot-libre"
-            etiqueta = "Libre"
-        elif e.estado_actual == "ARRENDADO":
-            clase = "spot-arrendado"
-            etiqueta = "Arrendado"
-        elif e.estado_actual == "SOBREESTADIA":
-            clase = "spot-sobreestadia"
-            etiqueta = "Sobreestadía"
-        else:
-            clase = "spot-dueno"
-            etiqueta = "Dueño/Bloq"
-
-        badge_rec = '<div class="recambio-tag">🔄 Recambio</div>' if e.en_recambio else '<div class="recambio-tag">⭐ Prioritario</div>'
-        celdas_html.append(
-            f'<div class="spot-box {clase}" title="{e.id_estacionamiento} ({e.propietario}) - {e.horas_libres_dia_hist}h/día - Margen {e.margen_seguridad_min}m">'
-            f'{e.id_estacionamiento}<br><span style="font-weight:400;font-size:0.68rem;">{etiqueta}</span><br>{badge_rec}'
-            f'</div>'
+        celdas = []
+        for e in motor.estacionamientos:
+            rec_txt = "RECAMBIO" if e.en_recambio else "NORMAL"
+            celdas.append(
+                f'<div style="border:1px solid #888;padding:4px;font-size:11px;text-align:center;">'
+                f'<b>{e.id_estacionamiento}</b><br>{e.estado_actual}<br>{rec_txt}</div>'
+            )
+        st.markdown(
+            '<div style="display:grid;grid-template-columns:repeat(10,1fr);gap:4px;margin:10px 0;">'
+            + "".join(celdas)
+            + "</div>",
+            unsafe_allow_html=True,
         )
 
-    st.markdown(
-        '<div class="spot-grid">' + "".join(celdas_html) + "</div>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        f"""
-        <div style="display:flex;gap:18px;justify-content:center;font-size:0.85rem;margin-top:6px;margin-bottom:14px;">
-            <span>🟢 <b>Libre ofrecido:</b> {kpis['libres']}</span>
-            <span>⚪ <b>Dueño en casa / Bloqueado:</b> {kpis['dueno_o_bloq']}</span>
-            <span>🔵 <b>Arrendado:</b> {kpis['arrendados']}</span>
-            <span>🔴 <b>Sobreestadía (Alerta):</b> {kpis['sobreestadia']}</span>
-            <span>🔄 <b>En Cola de Recambio:</b> {kpis['en_recambio']}</span>
-            <span>💰 <b>Aporte Comunidad (30%):</b> ${kpis['aporte_comunidad']:,}</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        df_ocupacion = pd.DataFrame([e.to_dict() for e in motor.estacionamientos])
+        st.dataframe(df_ocupacion, use_container_width=True, height=350)
 
-    col_adm1, col_adm2 = st.columns(2)
-
-    with col_adm1:
-        st.markdown("#### 🔀 **Funcionalidad Obligatoria Admin (F9): Asignar y Reasignar Estacionamientos**")
+    with sub_adm2:
         res_reasignables = [
             r for r in motor.reservas if r.estado in ("CONFIRMADA", "EN_CURSO", "SOBREESTADIA")
         ]
         if res_reasignables:
             op_r = [
-                f"{r.id_reserva} | Lote actual: {r.id_estacionamiento} | {r.cliente} ({r.hora_inicio}-{r.hora_fin}) [{r.estado}]"
+                f"{r.id_reserva} | Lote: {r.id_estacionamiento} | {r.cliente} ({r.hora_inicio}-{r.hora_fin}) [{r.estado}]"
                 for r in res_reasignables
             ]
-            sel_r_adm = st.selectbox("1. Seleccionar Reserva Activa a Reasignar:", op_r)
+            sel_r_adm = st.selectbox("Reserva a reasignar", op_r, key="sel_res_adm")
             id_res_adm = sel_r_adm.split(" | ")[0]
             res_obj_adm = motor.obtener_reserva(id_res_adm)
 
-            # Mostrar cuáles son compatibles y cuáles están en el Pool de Recambio
             compatibles_adm = motor.buscar_candidatos_ordenados(
                 fecha=res_obj_adm.fecha,
                 hora_inicio=res_obj_adm.hora_inicio,
@@ -610,289 +363,161 @@ elif vista.startswith("🛡️"):
             for e in motor.estacionamientos:
                 if e.id_estacionamiento == res_obj_adm.id_estacionamiento:
                     continue
-                tag_comp = "✅ Compatible" if e.id_estacionamiento in ids_comp else "❌ Conflicto/No disponible"
-                tag_rec = "🔄 Pool Recambio" if e.en_recambio else "⭐ Prioridad Normal"
+                tag_comp = "Compatible" if e.id_estacionamiento in ids_comp else "Conflicto/No disponible"
+                tag_rec = "Recambio" if e.en_recambio else "Prioridad Principal"
                 op_destinos.append(
-                    f"{e.id_estacionamiento} — {e.propietario} ({tag_rec} · {tag_comp} · Estado: {e.estado_actual})"
+                    f"{e.id_estacionamiento} - {e.propietario} [{tag_rec} | {tag_comp} | {e.estado_actual}]"
                 )
 
-            sel_dest = st.selectbox(
-                "2. Seleccionar Estacionamiento de Destino (permite probar tanto reasignación válida como rechazo por conflicto):",
-                op_destinos,
-            )
-            nuevo_spot_id = sel_dest.split(" — ")[0]
-            motivo_adm = st.text_input(
-                "Motivo de la reasignación:",
-                value="Contingencia operativa / Reubicación a estacionamiento de recambio",
-            )
+            sel_dest = st.selectbox("Estacionamiento destino", op_destinos, key="sel_dest_adm")
+            nuevo_spot_id = sel_dest.split(" - ")[0]
+            motivo_adm = st.text_input("Motivo", value="Reubicacion operativa", key="txt_motivo_adm")
 
-            if st.button("🔀 Ejecutar Reasignación de Estacionamiento (F9)", type="primary", use_container_width=True):
+            if st.button("Reasignar estacionamiento", key="btn_reasignar_adm"):
                 ok, msg = motor.admin_reasignar_reserva(id_res_adm, nuevo_spot_id, motivo=motivo_adm)
                 if ok:
                     st.success(msg)
                 else:
                     st.error(msg)
         else:
-            st.info("No hay reservas activas en este momento para reasignar.")
+            st.write("No hay reservas activas para reasignar.")
 
-        st.divider()
-        st.markdown("#### 🔄 **Gestión del Pool de Rotación y Recambio**")
-        st.caption(
-            "Los propietarios cuyos estacionamientos ya fueron elegidos pasan a `en_recambio = True` "
-            "(baja prioridad) para que todos los estacionamientos se ocupen equitativamente premiando la disponibilidad."
-        )
-        if st.button("🔄 Reiniciar Ciclo de Cola de Recambio (Todos a Prioridad Principal)", use_container_width=True):
-            ok, msg = motor.admin_reiniciar_ciclo_recambio()
-            st.success(msg)
-            st.rerun()
-
-    with col_adm2:
-        st.markdown("#### 🚨 **Funcionalidad Propia Admin (F7 + F8): Alertas de Exceso (×5) y Motor θ**")
-
-        st.markdown("##### **A. Gestión de Exceso de Tiempo / Sobreestadía (Tarifa ×5 = $125/min)**")
+    with sub_adm3:
         res_para_alerta = [
             r for r in motor.reservas if r.estado in ("EN_CURSO", "SOBREESTADIA", "CONFIRMADA")
         ]
         if res_para_alerta:
             op_al = [
-                f"{r.id_reserva} | {r.id_estacionamiento} | {r.cliente} (Fin: {r.hora_fin} · Exceso actual: {r.minutos_sobreestadia}m) [{r.estado}]"
+                f"{r.id_reserva} | {r.id_estacionamiento} | {r.cliente} (Fin: {r.hora_fin} | Exceso: {r.minutos_sobreestadia}m) [{r.estado}]"
                 for r in res_para_alerta
             ]
-            sel_al = st.selectbox("Seleccionar reserva con exceso de tiempo:", op_al)
+            sel_al = st.selectbox("Reserva", op_al, key="sel_alerta_adm")
             id_al = sel_al.split(" | ")[0]
-            min_exc = st.slider("Minutos de exceso sobre la hora de salida:", 5, 120, 25, step=5)
+            min_exc = st.number_input("Minutos de exceso", min_value=5, max_value=240, value=25, step=5, key="num_exc_adm")
+
             c_al1, c_al2 = st.columns(2)
             with c_al1:
-                if st.button("🚨 Declarar Alerta Sobreestadía (×5)", use_container_width=True):
+                if st.button("Declarar sobreestadia", key="btn_decl_sobre"):
                     ok, msg = motor.admin_declarar_o_resolver_sobreestadia(
-                        id_al, minutos_exceso=min_exc, finalizar_ahora=False
+                        id_al, minutos_exceso=int(min_exc), finalizar_ahora=False
                     )
-                    st.warning(msg)
+                    if ok:
+                        st.warning(msg)
+                    else:
+                        st.error(msg)
             with c_al2:
-                if st.button("💳 Liquidar Multa ×5 y Liberar Lote", use_container_width=True):
+                if st.button("Liquidar sobreestadia y liberar", key="btn_liq_sobre"):
                     ok, msg = motor.admin_declarar_o_resolver_sobreestadia(
-                        id_al, minutos_exceso=min_exc, finalizar_ahora=True
+                        id_al, minutos_exceso=int(min_exc), finalizar_ahora=True
                     )
-                    st.success(msg)
+                    if ok:
+                        st.success(msg)
+                    else:
+                        st.error(msg)
+        else:
+            st.write("No hay reservas disponibles.")
 
-        st.divider()
-        st.markdown("##### **B. Calibración del Motor de Disponibilidad (Umbral θ · Tabla 5.1 Solemne 1)**")
+    with sub_adm4:
         opciones_theta = [0.60, 0.70, 0.80, 0.90, 0.95]
         idx_th = opciones_theta.index(motor.theta) if motor.theta in opciones_theta else 2
         nuevo_th = st.select_slider(
-            "Seleccionar Umbral θ de probabilidad histórica exigida:",
+            "Umbral theta",
             options=opciones_theta,
             value=opciones_theta[idx_th],
+            key="slider_theta_adm",
         )
-        info_t51 = TABLA_5_1_UMBRALES.get(f"{nuevo_th:.2f}", TABLA_5_1_UMBRALES["0.80"])
-        st.caption(
-            f"📊 **Impacto según Tabla 5.1 (Solemne 1):** Con **θ = {nuevo_th:.2f}** → "
-            f"Bloques ofrecidos (4 sem): **{info_t51['bloques_ofrecidos']:,}** | "
-            f"Ingreso posible: **${info_t51['ingreso_posible']:,}** | "
-            f"Riesgo (reserva 2h): **{info_t51['riesgo_2h']}**."
-        )
-        if st.button("⚙️ Aplicar Nuevo Umbral θ a los 50 Estacionamientos (F8)", use_container_width=True):
+        if st.button("Aplicar umbral theta", key="btn_theta_adm"):
             ok, msg = motor.admin_actualizar_umbral_theta(float(nuevo_th))
-            st.success(msg)
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
 
+        st.divider()
+
+        if st.button("Reiniciar ciclo de recambio", key="btn_reset_recambio"):
+            ok, msg = motor.admin_reiniciar_ciclo_recambio()
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
 
 # =============================================================================
-# VISTA 4: DATOS CSV (ENTREGA 3) Y BOT DE GOOGLE CLOUD (SERVICE ACCOUNT + SHEETS)
+# PESTANA 4: DATOS CSV Y BOT GOOGLE
 # =============================================================================
-elif vista.startswith("📊"):
-    st.subheader("📊 Persistencia en CSV (Preparación Entrega 3) y Bot de Google Cloud")
-    st.caption(
-        "Cumple con **RT03 (Persistencia)** y **RT04 (Datos estructurados en CSV para el Dashboard de la Entrega 3)**, "
-        "además de sincronización en la nube mediante un **Bot de Cuenta de Servicio de Google Cloud (Google Sheets API)**."
-    )
-
-    tab_csv, tab_bot, tab_hito1 = st.tabs([
-        "📁 1. Tablas CSV Operacionales e Historial",
-        "🤖 2. Configurar Bot de Google Cloud (Google Sheets)",
-        "📈 3. Dataset Real Hito 1 (720 registros y Curva Grado 4)",
+with tab_datos:
+    sub_dat1, sub_dat2, sub_dat3, sub_dat4 = st.tabs([
+        "Historial Eventos CSV",
+        "Reservas CSV",
+        "Estacionamientos CSV",
+        "Bot Google y Semilla",
     ])
 
-    with tab_csv:
-        st.markdown("#### **1. Registro Histórico de Eventos (`data/historial_eventos.csv`)**")
-        st.caption("Registra creación, check-in, check-out, cancelación, liberación anticipada, bloqueos y reasignaciones con fecha y hora.")
+    with sub_dat1:
         df_evt = pd.read_csv(motor.persistencia.evt_csv)
-        st.dataframe(df_evt, use_container_width=True, height=230)
+        st.dataframe(df_evt, use_container_width=True, height=380)
         with open(motor.persistencia.evt_csv, "rb") as f:
-            st.download_button(
-                "⬇️ Descargar historial_eventos.csv",
-                data=f,
-                file_name="historial_eventos.csv",
-                mime="text/csv",
-            )
+            st.download_button("Descargar historial_eventos.csv", data=f, file_name="historial_eventos.csv", mime="text/csv")
 
-        st.markdown("#### **2. Registro de Reservas y Reparto 60/30/5/5 (`data/reservas.csv`)**")
+    with sub_dat2:
         df_res = pd.read_csv(motor.persistencia.res_csv)
-        st.dataframe(df_res, use_container_width=True, height=220)
+        st.dataframe(df_res, use_container_width=True, height=380)
         with open(motor.persistencia.res_csv, "rb") as f:
-            st.download_button(
-                "⬇️ Descargar reservas.csv",
-                data=f,
-                file_name="reservas.csv",
-                mime="text/csv",
-            )
+            st.download_button("Descargar reservas.csv", data=f, file_name="reservas.csv", mime="text/csv")
 
-        st.markdown("#### **3. Estado de los 50 Estacionamientos y Cola de Recambio (`data/estacionamientos.csv`)**")
+    with sub_dat3:
         df_est = pd.read_csv(motor.persistencia.est_csv)
-        st.dataframe(df_est, use_container_width=True, height=250)
+        st.dataframe(df_est, use_container_width=True, height=380)
         with open(motor.persistencia.est_csv, "rb") as f:
-            st.download_button(
-                "⬇️ Descargar estacionamientos.csv",
-                data=f,
-                file_name="estacionamientos.csv",
-                mime="text/csv",
-            )
+            st.download_button("Descargar estacionamientos.csv", data=f, file_name="estacionamientos.csv", mime="text/csv")
 
-    with tab_bot:
-        st.markdown("#### 🤖 **Gestor de Persistencia en la Nube con Bot de Google (Google Sheets)**")
-        st.write(
-            "Para que al hostear la aplicación en **GitHub + Streamlit Community Cloud** los archivos CSV no se pierdan "
-            "cuando el servidor se reinicie, puedes conectar tu hoja de **Google Sheets** usando cualquiera de estas **2 opciones** "
-            "(ambas gratuitas):"
-        )
-
+    with sub_dat4:
         bot = motor.persistencia.bot_google
-        if bot.conectado:
-            detalle_conn = (
-                f"Modo Apps Script (`{bot.apps_script_url[:48]}...`)"
-                if bot.modo == "apps_script"
-                else f"Cuenta de Servicio (`{bot.bot_email}`) · Hoja: `{bot.sheet_url}`"
-            )
-            st.success(f"✅ **Bot Conectado:** {detalle_conn}")
-            b_c1, b_c2, b_c3 = st.columns(3)
-            with b_c1:
-                if st.button("☁️ Subir CSV Locales -> Google Sheets ahora", type="primary", use_container_width=True):
-                    ok, msg = bot.sincronizar_csv_a_sheets(motor.persistencia.ARCHIVOS_OPERACIONALES)
-                    if ok:
-                        st.success(msg)
-                    else:
-                        st.warning(msg)
-            with b_c2:
-                if st.button("📥 Restaurar Google Sheets -> CSV Locales", use_container_width=True):
-                    ok, msg = bot.restaurar_sheets_a_csv(motor.persistencia.ARCHIVOS_OPERACIONALES)
-                    if ok:
-                        motor.recargar()
-                        st.success(msg)
-                    else:
-                        st.warning(msg)
-            with b_c3:
-                if st.button("🔌 Desvincular Bot (Usar solo CSV local)", use_container_width=True):
-                    bot.desconectar_bot()
-                    st.rerun()
+        st.write(f"Estado Bot: {bot.ultimo_estado}")
 
-            toml_str = bot.generar_toml_secrets()
-            if toml_str:
-                with st.expander("🔐 Copiar configuración para 'Settings -> Secrets' en Streamlit Cloud (Permanente)"):
-                    st.caption("Copia este bloque y pégalo en `Manage app -> Settings -> Secrets` en Streamlit Cloud para que quede fijo:")
-                    st.code(toml_str, language="toml")
-        else:
-            st.info(
-                "Actualmente funcionando en **Modo CSV Local (`data/*.csv`)**. "
-                "Elige abajo la **Opción A (Rápida en 1 minuto sin consola de Google Cloud)** o la **Opción B (Archivo .json de Google Cloud)**."
-            )
-
-        sub_a, sub_b = st.tabs([
-            "⚡ Opción A (Recomendada - 1 min): Bot directo en Google Sheets (Sin Google Cloud)",
-            "🔑 Opción B: Bot Cuenta de Servicio de Google Cloud (Archivo .json)",
-        ])
-
-        with sub_a:
-            st.markdown(
-                """
-                **¿No quieres complicarte creando proyectos ni llaves en Google Cloud Console?**
-                Haz que tu propia hoja de Google Sheets actúe como Bot en **4 clics**:
-                1. Crea una hoja nueva en [sheets.new](https://sheets.new).
-                2. En el menú superior de tu hoja, haz clic en **Extensiones → Apps Script**.
-                3. Borra lo que aparece ahí, pega el siguiente código y presiona **Guardar** (💾):
-                """
-            )
-            st.code(CODIGO_APPS_SCRIPT_BOT, language="javascript")
-            st.markdown(
-                """
-                4. Arriba a la derecha haz clic en el botón azul **Implementar → Nueva implementación**:
-                   * En el engranaje ⚙️ junto a *Selecciona el tipo*, elige **Aplicación web**.
-                   * En *Quién tiene acceso*, selecciona **Cualquier persona (Anyone)**.
-                   * Presiona **Implementar**, autoriza con tu cuenta y copia la **URL de la aplicación web** (`https://script.google.com/macros/s/.../exec`).
-                """
-            )
-            url_script_in = st.text_input(
-                "Pega aquí la URL de la Aplicación Web de tu Google Sheet:",
-                value=bot.apps_script_url,
-                placeholder="https://script.google.com/macros/s/AKfycb.../exec",
-            )
-            if st.button("⚡ Conectar Bot de Google Apps Script y Respaldar CSV", type="primary"):
-                ok, msg = bot.configurar_bot_apps_script(url_script_in)
+        b_c1, b_c2, b_c3, b_c4 = st.columns(4)
+        with b_c1:
+            if st.button("Sincronizar CSV a Google Sheets", key="btn_sync_up"):
+                ok, msg = bot.sincronizar_csv_a_sheets(motor.persistencia.ARCHIVOS_OPERACIONALES)
                 if ok:
-                    bot.sincronizar_csv_a_sheets(motor.persistencia.ARCHIVOS_OPERACIONALES)
                     st.success(msg)
-                    st.rerun()
                 else:
-                    st.error(msg)
-
-        with sub_b:
-            st.markdown(
-                """
-                **Pasos para conectar una Cuenta de Servicio de Google Cloud (`Service Account JSON`):**
-                1. Entra a [Google Cloud Console - Crear Proyecto](https://console.cloud.google.com/projectcreate) y crea un proyecto (ej. `sige-hito2`).
-                2. Habilita estas 2 APIs con un clic:
-                   * 👉 [Habilitar Google Sheets API](https://console.cloud.google.com/apis/library/sheets.googleapis.com)
-                   * 👉 [Habilitar Google Drive API](https://console.cloud.google.com/apis/library/drive.googleapis.com)
-                3. Ve a [Cuentas de Servicio (IAM)](https://console.cloud.google.com/iam-admin/serviceaccounts), haz clic en **+ Crear cuenta de servicio**, ponle nombre `bot-sige` y presiona **Crear y continuar → Listo**.
-                4. Haz clic sobre el correo creado (`bot-sige@...iam.gserviceaccount.com`), entra a la pestaña **Claves (Keys)** → **Agregar clave → Crear clave nueva → JSON** y se descargará un archivo `.json` a tu computador.
-                5. Abre una hoja de cálculo en [Google Sheets](https://sheets.new), presiona **Compartir** (arriba a la derecha) y pega el correo `client_email` del bot como **Editor**.
-                """
-            )
-            archivo_json = st.file_uploader(
-                "📂 1. Sube aquí el archivo .json descargado de Google Cloud (o pégalo abajo):",
-                type=["json"],
-            )
-            contenido_json_subido = ""
-            if archivo_json is not None:
-                contenido_json_subido = archivo_json.getvalue().decode("utf-8")
-                try:
-                    import json as _json
-                    datos_prev = _json.loads(contenido_json_subido)
-                    if "client_email" in datos_prev:
-                        st.info(
-                            f"📧 **Correo de tu Bot detectado:** `{datos_prev['client_email']}`\n"
-                            f"*(Asegúrate de compartir tu hoja de Google Sheets con este correo dándole permiso de Editor)*."
-                        )
-                except Exception:
-                    pass
-
-            sheet_url_in = st.text_input(
-                "🔗 2. Pega el enlace (URL) de tu hoja de Google Sheets:",
-                value=bot.sheet_url,
-                placeholder="https://docs.google.com/spreadsheets/d/1abc.../edit",
-            )
-            creds_json_in = st.text_area(
-                "O pega manualmente el contenido del archivo .json:",
-                value=contenido_json_subido,
-                height=130,
-                placeholder='{\n  "type": "service_account",\n  "project_id": "...",\n  "private_key": "...",\n  "client_email": "bot-sige@proyecto.iam.gserviceaccount.com"\n}',
-            )
-            if st.button("🔗 Guardar y Conectar Bot de Google Cloud (.json)", type="primary"):
-                ok, msg = bot.configurar_bot(creds_json_in, sheet_url_in)
+                    st.warning(msg)
+        with b_c2:
+            if st.button("Restaurar desde Google Sheets", key="btn_sync_down"):
+                ok, msg = bot.restaurar_sheets_a_csv(motor.persistencia.ARCHIVOS_OPERACIONALES)
                 if ok:
-                    bot.sincronizar_csv_a_sheets(motor.persistencia.ARCHIVOS_OPERACIONALES)
+                    motor.recargar()
                     st.success(msg)
-                    st.rerun()
                 else:
-                    st.error(msg)
+                    st.warning(msg)
+        with b_c3:
+            if st.button("Desvincular Bot", key="btn_unlink_bot"):
+                bot.desconectar_bot()
+                st.rerun()
+        with b_c4:
+            if st.button("Restaurar Datos Semilla Hito 1", key="btn_seed_reset"):
+                motor.persistencia.inicializar_si_no_existe(forzar_reinicio=True)
+                motor.recargar()
+                st.success("Datos semilla restaurados.")
+                st.rerun()
 
-    with tab_hito1:
-        st.markdown("#### 📈 **Dataset Original de la Solemne 1 (`data/dataset_historico_hito1.csv` — 720 registros, 15.289 bloques libres)**")
-        ruta_hist = os.path.join(DATA_DIR, "dataset_historico_hito1.csv")
-        ruta_prob = os.path.join(DATA_DIR, "probabilidades_bloques.csv")
-        if os.path.exists(ruta_prob):
-            df_prob = pd.read_csv(ruta_prob)
-            st.markdown("**Tabla B.1 reproducida: Promedio de libres por bloque (30 min), Curva Polinomial Grado 4 y Probabilidad por Estacionamiento:**")
-            st.dataframe(df_prob[["Hora", "Promedio_Libres_50", "Curva_Grado_4", "E18", "E05", "E02", "E16", "E33"]], use_container_width=True, height=240)
-        if os.path.exists(ruta_hist):
-            df_hist = pd.read_csv(ruta_hist)
-            st.markdown("**Matriz completa de los 20 días hábiles (3 al 28 de agosto de 2026 · 50 estacionamientos E01–E50):**")
-            st.dataframe(df_hist, use_container_width=True, height=240)
+        st.divider()
+
+        sheet_url_in = st.text_input(
+            "URL o ID de Google Sheet (dejar en AUTO para deteccion automatica)",
+            value=bot.sheet_url if bot.sheet_url else "AUTO",
+            key="in_sheet_url",
+        )
+        creds_json_in = st.text_area(
+            "JSON Cuenta de Servicio Google Cloud",
+            height=120,
+            key="in_creds_json",
+        )
+        if st.button("Conectar Cuenta de Servicio JSON", key="btn_conn_json"):
+            ok, msg = bot.configurar_bot(creds_json_in, sheet_url_in)
+            if ok:
+                bot.sincronizar_csv_a_sheets(motor.persistencia.ARCHIVOS_OPERACIONALES)
+                st.success(msg)
+            else:
+                st.error(msg)

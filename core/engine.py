@@ -1,8 +1,8 @@
 """
 Motor Central de Reglas de Negocio SIGE (Hito 2).
 Implementa las 6 funcionalidades exigidas (3 obligatorias + 3 propias), las reglas RN01-RN05,
-la Regla de Oferta del Anexo D (umbral θ y margen 30/60 min), el cobro por minuto (Ley 20.967),
-y el Sistema de Rotación Equitativa con Estacionamientos de Recambio.
+la Regla de Oferta del Anexo D (umbral theta y margen 30/60 min), el cobro por minuto (Ley 20.967),
+y el Sistema de Rotacion Equitativa con Estacionamientos de Recambio.
 """
 
 from __future__ import annotations
@@ -25,7 +25,6 @@ from core.seed_data import (
 )
 
 
-# Tabla 5.1 de la Solemne 1 (Regla de oferta según el umbral θ sobre el dataset de 4 semanas)
 TABLA_5_1_UMBRALES: Dict[str, Dict[str, Any]] = {
     "0.60": {"bloques_ofrecidos": 12889, "ingreso_posible": 8385000, "riesgo_2h": "14,0%"},
     "0.70": {"bloques_ofrecidos": 11544, "ingreso_posible": 7686000, "riesgo_2h": "11,8%"},
@@ -36,20 +35,17 @@ TABLA_5_1_UMBRALES: Dict[str, Dict[str, Any]] = {
 
 
 def hora_a_minutos(hora_str: str) -> int:
-    """Convierte 'HH:MM' a minutos desde las 00:00."""
     partes = hora_str.strip().split(":")
     return int(partes[0]) * 60 + int(partes[1])
 
 
 def minutos_a_hora(minutos: int) -> str:
-    """Convierte minutos desde las 00:00 a formato 'HH:MM'."""
     h = max(0, min(23, minutos // 60))
     m = max(0, min(59, minutos % 60))
     return f"{h:02d}:{m:02d}"
 
 
 def bloques_en_rango(hora_inicio: str, hora_fin: str) -> List[str]:
-    """Devuelve la lista de bloques de 30 min comprendidos en [hora_inicio, hora_fin)."""
     ini_m = hora_a_minutos(hora_inicio)
     fin_m = hora_a_minutos(hora_fin)
     resultado: List[str] = []
@@ -61,7 +57,6 @@ def bloques_en_rango(hora_inicio: str, hora_fin: str) -> List[str]:
 
 
 def rangos_se_superponen(ini1: str, fin1: str, ini2: str, fin2: str) -> bool:
-    """Retorna True si [ini1, fin1) y [ini2, fin2) tienen intersección horaria."""
     return max(hora_a_minutos(ini1), hora_a_minutos(ini2)) < min(
         hora_a_minutos(fin1), hora_a_minutos(fin2)
     )
@@ -143,10 +138,6 @@ class MotorSIGE:
         return ev
 
     def _sincronizar_estados_visuales(self) -> None:
-        """
-        RN04 (Consistencia de estados): Actualiza el estado_actual de cada estacionamiento
-        según sus bloqueos y las reservas activas vigentes.
-        """
         for e in self.estacionamientos:
             if e.estado_actual == "BLOQUEADO" or e.bloques_bloqueados == "TODO":
                 e.estado_actual = "BLOQUEADO"
@@ -168,9 +159,6 @@ class MotorSIGE:
             else:
                 e.estado_actual = "LIBRE"
 
-    # =========================================================================
-    # VALIDACIÓN CENTRAL DE DISPONIBILIDAD, MARGEN (30/60m) Y NO SUPERPOSICIÓN
-    # =========================================================================
     def verificar_compatibilidad_estacionamiento(
         self,
         est: Estacionamiento,
@@ -180,14 +168,6 @@ class MotorSIGE:
         ignorar_reserva_id: str = "",
         exigir_umbral_hist: bool = True,
     ) -> Tuple[bool, str]:
-        """
-        Verifica si `est` puede recibir una reserva en [hora_inicio, hora_fin) cumpliendo:
-        - RN01 y RN03: Semana confirmada y no bloqueado por el propietario en esos bloques.
-        - Regla propia 1 (Solemne 1): Probabilidad histórica >= θ en los bloques solicitados
-          MÁS los bloques de margen de seguridad (30 min si es puntual, 60 min si es irregular).
-        - Regla propia 2 (Solemne 1): Duración máxima según índice de regularidad del dueño.
-        - RN02: No superposición con ninguna otra reserva vigente (incluyendo margen de seguridad).
-        """
         ini_m = hora_a_minutos(hora_inicio)
         fin_m = hora_a_minutos(hora_fin)
         duracion = fin_m - ini_m
@@ -199,20 +179,19 @@ class MotorSIGE:
             return False, f"{est.id_estacionamiento} no tiene disponibilidad semanal confirmada."
 
         if est.estado_actual == "BLOQUEADO" or est.bloques_bloqueados == "TODO":
-            return False, f"{est.id_estacionamiento} está bloqueado por su propietario."
+            return False, f"{est.id_estacionamiento} esta bloqueado por su propietario."
 
         if duracion > est.max_duracion_reserva_min:
             return (
                 False,
                 f"El propietario de {est.id_estacionamiento} tiene perfil {est.perfil_regularidad} "
-                f"(máx. {est.max_duracion_reserva_min} min por reserva).",
+                f"(max. {est.max_duracion_reserva_min} min por reserva).",
             )
 
         bloques_solicitados = bloques_en_rango(hora_inicio, hora_fin)
         if not bloques_solicitados:
             return False, "Rango horario fuera de los bloques operativos (06:00 a 23:30)."
 
-        # Verificar bloques bloqueados manualmente por el propietario
         bloqueados_dueno = set(est.lista_bloques_bloqueados)
         conflicto_bloqueo = [b for b in bloques_solicitados if b in bloqueados_dueno]
         if conflicto_bloqueo:
@@ -221,7 +200,6 @@ class MotorSIGE:
                 f"{est.id_estacionamiento} tiene bloqueados los bloques: {', '.join(conflicto_bloqueo)}.",
             )
 
-        # Verificar margen de seguridad (30 min = 1 bloque puntual; 60 min = 2 bloques irregular)
         fin_con_margen_m = fin_m + est.margen_seguridad_min
         hora_fin_con_margen = minutos_a_hora(fin_con_margen_m)
         bloques_totales_con_margen = bloques_en_rango(hora_inicio, hora_fin_con_margen)
@@ -235,10 +213,9 @@ class MotorSIGE:
                     return (
                         False,
                         f"Bloque {b} (incluyendo margen de {est.margen_seguridad_min} min) tiene "
-                        f"disponibilidad histórica {p:.0%} < umbral θ={umbral:.0%}.",
+                        f"disponibilidad historica {p:.0%} < umbral theta={umbral:.0%}.",
                     )
 
-        # RN02: Verificar no superposición con otras reservas activas en la misma fecha
         for r in self.reservas:
             if r.id_reserva == ignorar_reserva_id:
                 continue
@@ -247,18 +224,14 @@ class MotorSIGE:
             if r.estado not in ("CONFIRMADA", "EN_CURSO", "SOBREESTADIA"):
                 continue
 
-            # Se protege también el margen entre reservas o regreso
             if rangos_se_superponen(hora_inicio, hora_fin, r.hora_inicio, r.hora_fin):
                 return (
                     False,
-                    f"Superposición horaria con reserva vigente {r.id_reserva} ({r.hora_inicio} a {r.hora_fin}).",
+                    f"Superposicion horaria con reserva vigente {r.id_reserva} ({r.hora_inicio} a {r.hora_fin}).",
                 )
 
         return True, "Compatible"
 
-    # =========================================================================
-    # MOTOR DE SELECCIÓN EQUITATIVA Y COLA DE RECAMBIO
-    # =========================================================================
     def buscar_candidatos_ordenados(
         self,
         fecha: str,
@@ -268,18 +241,6 @@ class MotorSIGE:
         excluir_estacionamientos: Optional[List[str]] = None,
         preferir_pool_recambio: bool = False,
     ) -> List[Tuple[Estacionamiento, str]]:
-        """
-        Retorna todos los estacionamientos compatibles ordenados según la política de negocio:
-        - En una reserva normal (`preferir_pool_recambio=False`):
-          1° Prioriza propietarios que AÚN NO HAN SIDO ELEGIDOS (`en_recambio=False`),
-             ordenados por mayor disponibilidad histórica y confiabilidad (premiando a quienes
-             ofrecen más horas libres al sistema).
-          2° Los propietarios cuyos lotes ya fueron elegidos (`en_recambio=True`) bajan su prioridad
-             y quedan en la Cola de Estacionamientos de Recambio para que todos los estacionamientos
-             se ocupen de la misma manera.
-        - En una contingencia/reasignación de emergencia (`preferir_pool_recambio=True`):
-          Puede usar directamente los lotes de recambio o los libres con menor uso.
-        """
         excluir = set(excluir_estacionamientos or [])
         compatibles: List[Estacionamiento] = []
 
@@ -296,7 +257,6 @@ class MotorSIGE:
             return []
 
         if preferir_pool_recambio:
-            # Para contingencias: usar primero estacionamientos de recambio libres (o menor uso)
             compatibles.sort(
                 key=lambda e: (
                     0 if e.en_recambio else 1,
@@ -306,8 +266,6 @@ class MotorSIGE:
                 )
             )
         else:
-            # Para nuevas reservas:
-            # Primero los NO usados en este ciclo (en_recambio=False), premiando mayor disponibilidad
             compatibles.sort(
                 key=lambda e: (
                     1 if e.en_recambio else 0,
@@ -322,36 +280,30 @@ class MotorSIGE:
         for e in compatibles:
             if not e.en_recambio:
                 motivo = (
-                    f"Prioridad Alta (Aporte {e.horas_libres_dia_hist} h/día, "
+                    f"Prioridad Principal (Disponibilidad {e.horas_libres_dia_hist} h/dia, "
                     f"Confiabilidad {e.indice_confiabilidad:.0f}%, 0 usos en ciclo actual) -> "
                     f"Al elegirse pasa a Estacionamiento de Recambio"
                 )
             elif preferir_pool_recambio:
                 motivo = (
-                    f"Tomado del Pool de Recambio ({e.horas_libres_dia_hist} h/día, "
+                    f"Tomado de Cola de Recambio ({e.horas_libres_dia_hist} h/dia, "
                     f"usos previos: {e.veces_asignado}) para resolver contingencia"
                 )
             elif todos_en_recambio:
                 motivo = (
-                    f"Ciclo de rotación completado entre lotes compatibles -> "
+                    f"Ciclo completado entre lotes compatibles -> "
                     f"Seleccionado de Cola de Recambio con menor uso ({e.veces_asignado})"
                 )
             else:
                 motivo = (
                     f"En Cola de Recambio (Prioridad reducida, usos previos: {e.veces_asignado}, "
-                    f"disponibilidad {e.horas_libres_dia_hist} h/día)"
+                    f"disponibilidad {e.horas_libres_dia_hist} h/dia)"
                 )
             resultado.append((e, motivo))
 
         return resultado
 
     def _marcar_lote_en_recambio(self, est: Estacionamiento) -> None:
-        """
-        Cuando un estacionamiento es seleccionado, incrementa su contador de uso,
-        baja su prioridad y lo deja como Estacionamiento de Recambio.
-        Si todos los estacionamientos con oferta confirmada ya están en recambio,
-        reinicia la bandera en_recambio de los demás para comenzar una nueva vuelta equitativa.
-        """
         est.veces_asignado += 1
         est.en_recambio = True
 
@@ -365,13 +317,9 @@ class MotorSIGE:
                 if e.id_estacionamiento != est.id_estacionamiento:
                     e.en_recambio = False
 
-    # =========================================================================
-    # 1. PROPIETARIO · FUNCIONALIDAD OBLIGATORIA: LIBERAR Y BLOQUEAR (+ ¡LLEGUÉ ANTES!)
-    # =========================================================================
     def propietario_liberar_estacionamiento(
         self, spot_id: str, limpiar_bloqueos: bool = True
     ) -> Tuple[bool, str]:
-        """El propietario declara su estacionamiento disponible y desbloquea sus bloques."""
         est = self.obtener_estacionamiento(spot_id)
         if not est:
             return False, "Estacionamiento no encontrado."
@@ -396,7 +344,7 @@ class MotorSIGE:
             hora_fin=est.hora_fin_ofrecida,
             estado_resultante="LIBRE",
             valor_operacion=0,
-            detalle=f"Propietario {est.propietario} liberó su estacionamiento ({est.hora_inicio_ofrecida}-{est.hora_fin_ofrecida}).",
+            detalle=f"Propietario {est.propietario} libero su estacionamiento ({est.hora_inicio_ofrecida}-{est.hora_fin_ofrecida}).",
         )
         self.guardar()
         return (
@@ -412,22 +360,12 @@ class MotorSIGE:
         hora_fin_bloqueo: str,
         es_emergencia_llegue_antes: bool = False,
     ) -> Tuple[bool, str]:
-        """
-        El propietario bloquea un período horario o presiona el botón rojo '¡Llegué antes!'.
-        RN01 (Prioridad del propietario) + Tabla 3.1 (Contingencias):
-        - Verifica si existe una reserva vigente (CONFIRMADA o EN_CURSO) en ese período.
-        - Si existe, intenta reasignarla automáticamente a otro estacionamiento compatible
-          (usando el Pool de Recambio / disponibles) sin afectar al cliente.
-        - Si no hay ningún estacionamiento compatible disponible, cancela la reserva,
-          devuelve el dinero y compensa al cliente ($1.500), reduciendo el índice de
-          confiabilidad del propietario si canceló una disponibilidad reservada.
-        """
         est = self.obtener_estacionamiento(spot_id)
         if not est:
             return False, "Estacionamiento no encontrado."
 
         if hora_a_minutos(hora_fin_bloqueo) <= hora_a_minutos(hora_inicio_bloqueo):
-            return False, "La hora de término del bloqueo debe ser posterior a la hora de inicio."
+            return False, "La hora de termino del bloqueo debe ser posterior a la hora de inicio."
 
         bloques_a_bloquear = bloques_en_rango(hora_inicio_bloqueo, hora_fin_bloqueo)
         actuales = set(est.lista_bloques_bloqueados)
@@ -438,7 +376,6 @@ class MotorSIGE:
         else:
             est.bloques_bloqueados = ",".join(sorted(actuales))
 
-        # Buscar reservas activas que entren en conflicto con el bloqueo del dueño
         reservas_afectadas = [
             r
             for r in self.reservas
@@ -465,7 +402,7 @@ class MotorSIGE:
                 res.id_estacionamiento = nuevo_est.id_estacionamiento
                 res.propietario = nuevo_est.propietario
                 res.criterio_asignacion = (
-                    f"Reasignación automática desde {est_anterior} por retorno/bloqueo del dueño ({motivo_rec})"
+                    f"Reasignacion automatica desde {est_anterior} por retorno/bloqueo del dueno ({motivo_rec})"
                 )
                 self._marcar_lote_en_recambio(nuevo_est)
                 if not es_emergencia_llegue_antes:
@@ -485,15 +422,14 @@ class MotorSIGE:
                     valor_operacion=res.monto_total,
                     detalle=(
                         f"Prioridad del propietario en {est_anterior}: Reserva {res.id_reserva} "
-                        f"reasignada automáticamente al estacionamiento {nuevo_est.id_estacionamiento} ({nuevo_est.propietario})."
+                        f"reasignada automaticamente al estacionamiento {nuevo_est.id_estacionamiento} ({nuevo_est.propietario})."
                     ),
                 )
                 mensajes_contingencia.append(
-                    f"⚡ Contingencia resuelta: La reserva vigente {res.id_reserva} ({res.cliente}) fue "
-                    f"reasignada automáticamente a {nuevo_est.id_estacionamiento} ({nuevo_est.propietario})."
+                    f"Contingencia resuelta: La reserva vigente {res.id_reserva} ({res.cliente}) fue "
+                    f"reasignada automaticamente a {nuevo_est.id_estacionamiento} ({nuevo_est.propietario})."
                 )
             else:
-                # No hay estacionamiento compatible: devolución + compensación y baja confiabilidad
                 res.estado = "CANCELADA"
                 res.monto_base = 0
                 res.monto_total = 0
@@ -517,14 +453,14 @@ class MotorSIGE:
                     estado_resultante="CANCELADA",
                     valor_operacion=-COMPENSACION_CONTINGENCIA,
                     detalle=(
-                        f"Dueño recuperó {spot_id} sin cupos de recambio disponibles. "
-                        f"Se devolvió el 100% y se compensó al cliente con ${COMPENSACION_CONTINGENCIA}. "
-                        f"Confiabilidad del dueño ajustada a {est.indice_confiabilidad}%."
+                        f"Dueno recupero {spot_id} sin cupos de recambio disponibles. "
+                        f"Se devolvio el 100% y se compenso al cliente con ${COMPENSACION_CONTINGENCIA}. "
+                        f"Confiabilidad del dueno ajustada a {est.indice_confiabilidad}%."
                     ),
                 )
                 mensajes_contingencia.append(
-                    f"⚠️ Sin cupo de recambio para {res.id_reserva}: se priorizó al propietario, "
-                    f"se devolvió el dinero y se compensó a {res.cliente} con ${COMPENSACION_CONTINGENCIA:,}."
+                    f"Sin cupo de recambio para {res.id_reserva}: se priorizo al propietario, "
+                    f"se devolvio el dinero y se compenso a {res.cliente} con ${COMPENSACION_CONTINGENCIA:,}."
                 )
 
         tipo_evt = "LLEGUE_ANTES_EMERGENCIA" if es_emergencia_llegue_antes else "BLOQUEO_PROPIETARIO"
@@ -541,33 +477,24 @@ class MotorSIGE:
             estado_resultante=est.estado_actual,
             valor_operacion=0,
             detalle=(
-                f"Propietario {est.propietario} activó {'¡Llegué antes!' if es_emergencia_llegue_antes else 'bloqueo horario'} "
+                f"Propietario {est.propietario} activo {'Llegue antes' if es_emergencia_llegue_antes else 'bloqueo horario'} "
                 f"({hora_inicio_bloqueo}-{hora_fin_bloqueo}). Reservas afectadas: {len(reservas_afectadas)}."
             ),
         )
         self.guardar()
 
         resumen = (
-            f"🛑 ¡Prioridad del propietario activada en {spot_id}! Espacio recuperado de inmediato."
+            f"Prioridad del propietario activada en {spot_id}. Espacio recuperado de inmediato."
             if es_emergencia_llegue_antes
-            else f"🔒 Bloqueo aplicado en {spot_id} para el tramo {hora_inicio_bloqueo} - {hora_fin_bloqueo}."
+            else f"Bloqueo aplicado en {spot_id} para el tramo {hora_inicio_bloqueo} - {hora_fin_bloqueo}."
         )
         if mensajes_contingencia:
             resumen += "\n\n" + "\n".join(mensajes_contingencia)
         return True, resumen
 
-    # =========================================================================
-    # 2. PROPIETARIO · FUNCIONALIDAD PROPIA (F1): CONFIRMAR SEMANA Y PERFIL DE REGULARIDAD
-    # =========================================================================
     def propietario_confirmar_semana_mixta(
         self, spot_id: str, nuevo_perfil: Optional[str] = None
     ) -> Tuple[bool, str]:
-        """
-        F1 (Confirmar la semana con un clic - Disponibilidad Mixta):
-        Recalcula la ventana horaria sugerida para el propietario usando su historial de 20 días,
-        el umbral θ vigente y su margen de seguridad (30 min puntual / 60 min irregular),
-        confirmando su oferta semanal y limpiando bloqueos temporales.
-        """
         est = self.obtener_estacionamiento(spot_id)
         if not est:
             return False, "Estacionamiento no encontrado."
@@ -600,8 +527,8 @@ class MotorSIGE:
             estado_resultante=est.estado_actual,
             valor_operacion=0,
             detalle=(
-                f"Disponibilidad mixta confirmada con 1 clic (θ={self.theta:.2f}, perfil {est.perfil_regularidad}, "
-                f"margen {est.margen_seguridad_min} min -> {len(bloques_of)} bloques ofrecidos/día)."
+                f"Disponibilidad mixta confirmada (theta={self.theta:.2f}, perfil {est.perfil_regularidad}, "
+                f"margen {est.margen_seguridad_min} min -> {len(bloques_of)} bloques ofrecidos/dia)."
             ),
         )
         self.guardar()
@@ -609,20 +536,17 @@ class MotorSIGE:
         if not bloques_of:
             return (
                 False,
-                f"Con el umbral θ={self.theta:.2f} y margen de {est.margen_seguridad_min} min, "
-                f"{spot_id} no alcanza el 80% histórico en ningún bloque continuo.",
+                f"Con el umbral theta={self.theta:.2f} y margen de {est.margen_seguridad_min} min, "
+                f"{spot_id} no alcanza el porcentaje historico exigido en ningun bloque continuo.",
             )
 
         ingreso_potencial_sem = int(len(bloques_of) * 5 * 750 * 0.60)
         return (
             True,
-            f"✅ Semana confirmada para {spot_id} ({est.propietario}): disponible de {inicio_of} a {fin_of} "
-            f"(margen de seguridad: {est.margen_seguridad_min} min · ingreso potencial 60% dueño: ${ingreso_potencial_sem:,}/semana).",
+            f"Semana confirmada para {spot_id} ({est.propietario}): disponible de {inicio_of} a {fin_of} "
+            f"(margen de seguridad: {est.margen_seguridad_min} min, ingreso potencial 60% dueno: ${ingreso_potencial_sem:,}/semana).",
         )
 
-    # =========================================================================
-    # 3. CLIENTE · FUNCIONALIDAD OBLIGATORIA (F4): RESERVAR Y CANCELAR/LIBERAR
-    # =========================================================================
     def cliente_crear_reserva(
         self,
         cliente: str,
@@ -631,12 +555,6 @@ class MotorSIGE:
         hora_inicio: str,
         hora_fin: str,
     ) -> Tuple[bool, str, Optional[Reserva]]:
-        """
-        F4 (Buscar y reservar un tiempo - Asignación ciega + Rotación de Recambio):
-        El cliente NO elige el estacionamiento. El sistema verifica disponibilidad (θ, margen 30/60 min,
-        no bloqueo, no superposición), elige el estacionamiento óptimo según la cola de prioridad/recambio,
-        baja la prioridad del lote elegido pasándolo a Recambio, y genera el código QR.
-        """
         cliente_limpio = cliente.strip()
         patente_limpia = patente.strip().upper() or "S/P"
         if not cliente_limpio:
@@ -646,7 +564,7 @@ class MotorSIGE:
         fin_m = hora_a_minutos(hora_fin)
         duracion_min = fin_m - ini_m
         if duracion_min < 30:
-            return False, "La reserva mínima en grilla es de 30 minutos (el cobro real en portería es por minuto).", None
+            return False, "La reserva minima en grilla es de 30 minutos (el cobro real en porteria es por minuto).", None
 
         candidatos = self.buscar_candidatos_ordenados(
             fecha=fecha,
@@ -667,13 +585,13 @@ class MotorSIGE:
                 hora_fin=hora_fin,
                 estado_resultante="RECHAZADA",
                 valor_operacion=0,
-                detalle=f"Sin estacionamientos compatibles para {hora_inicio}-{hora_fin} (θ={self.theta:.2f} + margen).",
+                detalle=f"Sin estacionamientos compatibles para {hora_inicio}-{hora_fin} (theta={self.theta:.2f} + margen).",
             )
             self.guardar()
             return (
                 False,
                 f"No hay estacionamientos compatibles entre {hora_inicio} y {hora_fin} que cumplan "
-                f"el umbral θ={self.theta:.0%} y el margen de seguridad del propietario.",
+                f"el umbral theta={self.theta:.0%} y el margen de seguridad del propietario.",
                 None,
             )
 
@@ -702,7 +620,6 @@ class MotorSIGE:
         nueva_res.calcular_cobro_y_reparto(minutos_efectivos=duracion_min, minutos_exceso=0)
         self.reservas.append(nueva_res)
 
-        # Aplicar política de rotación: el lote elegido baja su prioridad y pasa a Estacionamiento de Recambio
         self._marcar_lote_en_recambio(est_elegido)
 
         self._registrar_evento(
@@ -725,20 +642,15 @@ class MotorSIGE:
         self.guardar()
         return (
             True,
-            f"✅ Reserva {res_id} confirmada ({hora_inicio} a {hora_fin}). "
-            f"Espacio asignado por el sistema: {est_elegido.id_estacionamiento} · "
-            f"El lote {est_elegido.id_estacionamiento} pasa ahora a la Cola de Recambio para rotar equitativamente los demás estacionamientos.",
+            f"Reserva {res_id} confirmada ({hora_inicio} a {hora_fin}). "
+            f"Espacio asignado por el sistema: {est_elegido.id_estacionamiento}. "
+            f"El lote {est_elegido.id_estacionamiento} pasa a la Cola de Recambio para rotar equitativamente los demas estacionamientos.",
             nueva_res,
         )
 
     def cliente_cancelar_o_liberar_reserva(
         self, res_id: str, minutos_usados_si_anticipada: Optional[int] = None
     ) -> Tuple[bool, str]:
-        """
-        Permite al cliente:
-        - Cancelar una reserva CONFIRMADA antes de ingresar ($0 cobro, libera el espacio y revierte uso si no entró).
-        - Liberar anticipadamente una reserva EN_CURSO cobrando solo los minutos efectivos (Ley N° 20.967).
-        """
         res = self.obtener_reserva(res_id)
         if not res:
             return False, "Reserva no encontrada."
@@ -764,12 +676,11 @@ class MotorSIGE:
                 hora_fin=res.hora_fin,
                 estado_resultante="CANCELADA",
                 valor_operacion=0,
-                detalle=f"Cliente {res.cliente} canceló la reserva antes de ingresar. Espacio {res.id_estacionamiento} liberado.",
+                detalle=f"Cliente {res.cliente} cancelo la reserva antes de ingresar. Espacio {res.id_estacionamiento} liberado.",
             )
             self.guardar()
-            return True, f"Reserva {res_id} cancelada sin costo. El estacionamiento {res.id_estacionamiento} quedó libre."
+            return True, f"Reserva {res_id} cancelada sin costo. El estacionamiento {res.id_estacionamiento} quedo libre."
 
-        # Liberación anticipada con cobro por minuto real (Ley 20.967)
         min_efectivos = (
             minutos_usados_si_anticipada
             if minutos_usados_si_anticipada is not None
@@ -793,41 +704,31 @@ class MotorSIGE:
             estado_resultante="FINALIZADA",
             valor_operacion=res.monto_total,
             detalle=(
-                f"Liberación anticipada de {res_id}: se cobraron exactamente {min_efectivos} min "
+                f"Liberacion anticipada de {res_id}: se cobraron exactamente {min_efectivos} min "
                 f"(Ley 20.967: ${res.monto_total:,}, ahorro de {res.duracion_reservada_min - min_efectivos} min)."
             ),
         )
         self.guardar()
         return (
             True,
-            f"✅ Reserva {res_id} liberada anticipadamente. "
-            f"Cobro por minuto efectivo (Ley 20.967): {min_efectivos} min × $25 = ${res.monto_total:,} "
+            f"Reserva {res_id} liberada anticipadamente. "
+            f"Cobro por minuto efectivo (Ley 20.967): {min_efectivos} min x $25 = ${res.monto_total:,} "
             f"(Propietario 60%: ${res.pago_propietario_60:,} | Admin 30%: ${res.aporte_admin_30:,}).",
         )
 
-    # =========================================================================
-    # 4. CLIENTE · FUNCIONALIDAD PROPIA (F5 + F10): ACCESO QR Y COBRO POR MINUTO
-    # =========================================================================
     def cliente_procesar_qr_porteria(
         self,
         codigo_qr_o_id: str,
         accion: str,
         minutos_reales: Optional[int] = None,
     ) -> Tuple[bool, str]:
-        """
-        F5 (Código QR de entrada y salida) + F10 (Cobro por minuto Ley 20.967 y reparto 60/30/5/5):
-        - accion == 'CHECK_IN': Valida el QR en portería, inicia la ocupación (EN_CURSO) y el cronómetro.
-        - accion == 'CHECK_OUT': Valida el QR al salir, calcula los minutos reales usados y si hubo
-          exceso sobre la duración reservada (aplicando multa x5 = $125/min), reparte los ingresos
-          y libera el estacionamiento.
-        """
         clave = codigo_qr_o_id.strip()
         res = next(
             (r for r in self.reservas if r.codigo_qr == clave or r.id_reserva == clave),
             None,
         )
         if not res:
-            return False, f"Código QR o Reserva '{clave}' no válido en el sistema."
+            return False, f"Codigo QR o Reserva '{clave}' no valido en el sistema."
 
         est = self.obtener_estacionamiento(res.id_estacionamiento)
 
@@ -847,12 +748,12 @@ class MotorSIGE:
                 hora_fin=res.hora_fin,
                 estado_resultante="EN_CURSO",
                 valor_operacion=res.monto_total,
-                detalle=f"QR '{res.codigo_qr}' validado en portería. Ingreso autorizado a {res.id_estacionamiento}.",
+                detalle=f"QR '{res.codigo_qr}' validado en porteria. Ingreso autorizado a {res.id_estacionamiento}.",
             )
             self.guardar()
             return (
                 True,
-                f"🟢 Check-in QR validado: Vehículo {res.patente} ({res.cliente}) ingresó a {res.id_estacionamiento}. Comienza el cobro por minuto.",
+                f"Check-in QR validado: Vehiculo {res.patente} ({res.cliente}) ingreso a {res.id_estacionamiento}. Comienza el cobro por minuto.",
             )
 
         elif accion == "CHECK_OUT":
@@ -886,42 +787,33 @@ class MotorSIGE:
                 valor_operacion=res.monto_total,
                 detalle=(
                     f"Salida QR '{res.codigo_qr}': {min_base} min normales (${res.monto_base}) + "
-                    f"{min_exceso} min sobreestadía x5 (${res.multa_sobreestadia}) = Total ${res.monto_total}. "
+                    f"{min_exceso} min sobreestadia x5 (${res.multa_sobreestadia}) = Total ${res.monto_total}. "
                     f"Reparto 60/30/5/5 acreditado."
                 ),
             )
             self.guardar()
             msg_exceso = (
-                f" (incluye {min_exceso} min de sobreestadía con tarifa ×5 = ${res.multa_sobreestadia:,})"
+                f" (incluye {min_exceso} min de sobreestadia con tarifa x5 = ${res.multa_sobreestadia:,})"
                 if min_exceso > 0
-                else " (sin sobreestadía)"
+                else " (sin sobreestadia)"
             )
             return (
                 True,
-                f"🏁 Check-out QR completado para {res.id_reserva}{msg_exceso}.\n"
-                f"• Total cobrado (Ley 20.967): **${res.monto_total:,}**\n"
-                f"• Reparto: Propietario (60%): **${res.pago_propietario_60:,}** | "
-                f"Administración (30%): **${res.aporte_admin_30:,}** | "
-                f"Guardia (5%): **${res.bono_guardia_5:,}** | Operación (5%): **${res.ingreso_operacion_5:,}**.",
+                f"Check-out QR completado para {res.id_reserva}{msg_exceso}.\n"
+                f"Total cobrado (Ley 20.967): ${res.monto_total:,}\n"
+                f"Reparto: Propietario (60%): ${res.pago_propietario_60:,} | "
+                f"Administracion (30%): ${res.aporte_admin_30:,} | "
+                f"Guardia (5%): ${res.bono_guardia_5:,} | Operacion (5%): ${res.ingreso_operacion_5:,}.",
             )
 
-        return False, "Acción QR no reconocida."
+        return False, "Accion QR no reconocida."
 
-    # =========================================================================
-    # 5. ADMINISTRADOR · FUNCIONALIDAD OBLIGATORIA (F6 + F9): ASIGNAR Y REASIGNAR
-    # =========================================================================
     def admin_reasignar_reserva(
         self,
         res_id: str,
         nuevo_spot_id: str,
-        motivo: str = "Reasignación operativa por Administración",
+        motivo: str = "Reasignacion operativa por Administracion",
     ) -> Tuple[bool, str]:
-        """
-        F9 (Asignar y reasignar estacionamientos):
-        El administrador asocia o reasigna una reserva vigente a otro estacionamiento compatible.
-        Verifica antes que no existan conflictos de disponibilidad, bloqueo ni superposición,
-        y actualiza el estado de recambio de ambos estacionamientos.
-        """
         res = self.obtener_reserva(res_id)
         if not res:
             return False, "Reserva no encontrada."
@@ -930,7 +822,7 @@ class MotorSIGE:
             return False, f"Solo se pueden reasignar reservas activas (estado actual: {res.estado})."
 
         if res.id_estacionamiento == nuevo_spot_id:
-            return False, f"La reserva {res_id} ya está asignada al estacionamiento {nuevo_spot_id}."
+            return False, f"La reserva {res_id} ya esta asignada al estacionamiento {nuevo_spot_id}."
 
         nuevo_est = self.obtener_estacionamiento(nuevo_spot_id)
         if not nuevo_est:
@@ -956,10 +848,10 @@ class MotorSIGE:
                 hora_fin=res.hora_fin,
                 estado_resultante=res.estado,
                 valor_operacion=0,
-                detalle=f"Reasignación rechazada hacia {nuevo_spot_id}: {razon}",
+                detalle=f"Reasignacion rechazada hacia {nuevo_spot_id}: {razon}",
             )
             self.guardar()
-            return False, f"❌ Reasignación rechazada por validación de reglas: {razon}"
+            return False, f"Reasignacion rechazada por validacion de reglas: {razon}"
 
         spot_anterior = res.id_estacionamiento
         res.estacionamiento_original = spot_anterior
@@ -987,21 +879,13 @@ class MotorSIGE:
         self.guardar()
         return (
             True,
-            f"✅ Reserva {res.id_reserva} ({res.cliente}) reasignada con éxito de **{spot_anterior}** a **{nuevo_spot_id}** ({nuevo_est.propietario}). "
-            f"El lote {nuevo_spot_id} quedó marcado en la Cola de Recambio.",
+            f"Reserva {res.id_reserva} ({res.cliente}) reasignada de {spot_anterior} a {nuevo_spot_id} ({nuevo_est.propietario}). "
+            f"El lote {nuevo_spot_id} quedo marcado en la Cola de Recambio.",
         )
 
-    # =========================================================================
-    # 6. ADMINISTRADOR · FUNCIONALIDAD PROPIA (F7 + F8): CONTINGENCIAS, SOBREESTADÍA Y UMBRAL θ
-    # =========================================================================
     def admin_declarar_o_resolver_sobreestadia(
         self, res_id: str, minutos_exceso: int, finalizar_ahora: bool = False
     ) -> Tuple[bool, str]:
-        """
-        F7 (Alertas de exceso de tiempo y tarifa penalizada x5 - Tabla 3.1 Solemne 1):
-        Permite registrar un exceso de tiempo sobre una reserva activa, aplicando la tarifa x5
-        ($125/min) y opcionalmente cerrando/liberando el espacio o reasignando si hay conflicto.
-        """
         res = self.obtener_reserva(res_id)
         if not res:
             return False, "Reserva no encontrada."
@@ -1024,7 +908,7 @@ class MotorSIGE:
         else:
             res.estado = "SOBREESTADIA"
             estado_ev = "SOBREESTADIA"
-            accion_txt = "marcada en ALERTA DE SOBREESTADÍA"
+            accion_txt = "marcada en ALERTA DE SOBREESTADIA"
 
         self._registrar_evento(
             tipo_evento="GESTION_SOBREESTADIA_X5",
@@ -1039,26 +923,21 @@ class MotorSIGE:
             estado_resultante=estado_ev,
             valor_operacion=res.monto_total,
             detalle=(
-                f"Sobreestadía de {minutos_exceso} min en {res.id_estacionamiento} ({accion_txt}). "
+                f"Sobreestadia de {minutos_exceso} min en {res.id_estacionamiento} ({accion_txt}). "
                 f"Multa x5 ($125/min) = ${res.multa_sobreestadia}. Total actualizado: ${res.monto_total}."
             ),
         )
         self.guardar()
         return (
             True,
-            f"🚨 Reserva {res.id_reserva} ({res.id_estacionamiento}) {accion_txt} con {minutos_exceso} min de exceso.\n"
-            f"• Multa sobreestadía (×5 = $125/min): **${res.multa_sobreestadia:,}** | "
-            f"Nuevo total: **${res.monto_total:,}**.",
+            f"Reserva {res.id_reserva} ({res.id_estacionamiento}) {accion_txt} con {minutos_exceso} min de exceso. "
+            f"Multa sobreestadia (x5 = $125/min): ${res.multa_sobreestadia:,} | "
+            f"Nuevo total: ${res.monto_total:,}.",
         )
 
     def admin_actualizar_umbral_theta(self, nuevo_theta: float) -> Tuple[bool, str]:
-        """
-        F8 (Motor de disponibilidad - Tabla 5.1 Solemne 1):
-        Modifica el umbral θ de probabilidad histórica exigida (ej. 0.60, 0.70, 0.80, 0.90, 0.95)
-        y recalcula automáticamente las ventanas horarias ofrecidas de los 50 estacionamientos.
-        """
         if not (0.50 <= nuevo_theta <= 0.99):
-            return False, "El umbral θ debe estar entre 0.50 y 0.99."
+            return False, "El umbral theta debe estar entre 0.50 y 0.99."
 
         self.config["theta"] = f"{nuevo_theta:.2f}"
         con_oferta = 0
@@ -1091,19 +970,18 @@ class MotorSIGE:
             estado_resultante=f"THETA={nuevo_theta:.2f}",
             valor_operacion=0,
             detalle=(
-                f"Umbral θ actualizado a {nuevo_theta:.2f}. Estacionamientos con oferta válida: "
-                f"{con_oferta}/50 ({bloques_totales_dia} bloques/día)."
+                f"Umbral theta actualizado a {nuevo_theta:.2f}. Estacionamientos con oferta valida: "
+                f"{con_oferta}/50 ({bloques_totales_dia} bloques/dia)."
             ),
         )
         self.guardar()
         return (
             True,
-            f"⚙️ Motor de disponibilidad recalibrado a **θ = {nuevo_theta:.2f}**: "
-            f"**{con_oferta} de 50 estacionamientos** califican con oferta activa ({bloques_totales_dia} bloques/día protegidos con margen de 30/60 min).",
+            f"Motor de disponibilidad recalibrado a theta = {nuevo_theta:.2f}: "
+            f"{con_oferta} de 50 estacionamientos califican con oferta activa ({bloques_totales_dia} bloques/dia).",
         )
 
     def admin_reiniciar_ciclo_recambio(self) -> Tuple[bool, str]:
-        """Reinicia la bandera en_recambio de todos los lotes para comenzar un nuevo ciclo de rotación."""
         for e in self.estacionamientos:
             e.en_recambio = False
         self._registrar_evento(
@@ -1118,13 +996,12 @@ class MotorSIGE:
             hora_fin="23:30",
             estado_resultante="CICLO_REINICIADO",
             valor_operacion=0,
-            detalle="Cola de recambio reiniciada: todos los estacionamientos vuelven a prioridad principal según disponibilidad.",
+            detalle="Cola de recambio reiniciada: todos los estacionamientos vuelven a prioridad principal segun disponibilidad.",
         )
         self.guardar()
-        return True, "🔄 Ciclo de rotación reiniciado: todos los estacionamientos confirmados vuelven a Prioridad Principal ordenados por mayor disponibilidad."
+        return True, "Ciclo de rotacion reiniciado: todos los estacionamientos confirmados vuelven a Prioridad Principal."
 
     def obtener_resumen_kpis(self) -> Dict[str, Any]:
-        """Calcula indicadores en vivo a partir de los CSV para mostrar en el monitor y preparar Entrega 3."""
         libres = sum(1 for e in self.estacionamientos if e.estado_actual == "LIBRE")
         arrendados = sum(1 for e in self.estacionamientos if e.estado_actual == "ARRENDADO")
         sobreestadia = sum(1 for e in self.estacionamientos if e.estado_actual == "SOBREESTADIA")
